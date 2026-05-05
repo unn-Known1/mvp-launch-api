@@ -2,6 +2,19 @@
 
 A FastAPI-based backend for the MVP Launch platform, providing data ingestion, forecasting, NLP, and anomaly detection capabilities.
 
+## Project Status
+
+| Feature | Status | Issue |
+|---------|--------|-------|
+| Database schema (pgvector, pooling) | In Progress | [FOR-13](https://github.com/unn-Known1/mvp-launch-api/issues/13) |
+| RBAC and authentication | In Progress | [FOR-28](https://github.com/unn-Known1/mvp-launch-api/issues/28) |
+| Automated reporting engine | In Progress | [FOR-23](https://github.com/unn-Known1/mvp-launch-api/issues/23) |
+| Predictive analytics (Prophet) | In Progress | [FOR-25](https://github.com/unn-Known1/mvp-launch-api/issues/25) |
+| Anomaly detection system | In Progress | [FOR-24](https://github.com/unn-Known1/mvp-launch-api/issues/24) |
+| Infrastructure (Terraform + AWS) | In Progress | [FOR-15](https://github.com/unn-Known1/mvp-launch-api/issues/15) |
+| Chart generation & visualization | Todo | [FOR-22](https://github.com/unn-Known1/mvp-launch-api/issues/22) |
+| Frontend project setup | Todo | [FOR-8](https://github.com/unn-Known1/mvp-launch-api/issues/8) |
+
 ## Features
 
 - **Data Ingestion**: CSV upload and database connectors
