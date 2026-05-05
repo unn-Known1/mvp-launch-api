@@ -1,0 +1,28 @@
+# Terraform variables example file
+# Copy this to terraform.tfvars and fill in the values
+
+aws_region = "us-east-1"
+environment = "staging"
+project_name = "mvp-launch"
+
+# Database
+db_instance_class = "db.t3.micro"
+db_name = "mvplaunch"
+db_username = "admin"
+db_password = "CHANGE_ME_STRONG_PASSWORD"
+
+# ECS
+ecs_task_cpu = 256
+ecs_task_memory = 512
+ecs_desired_count = 1
+
+# S3 bucket for Terraform state (existing bucket)
+# terraform {
+#   backend "s3" {
+#     bucket         = "your-terraform-state-bucket"
+#     key            = "mvp-launch/terraform.tfstate"
+#     region         = "us-east-1"
+#     encrypt        = true
+#     dynamodb_table = "your-terraform-locks"
+#   }
+# }

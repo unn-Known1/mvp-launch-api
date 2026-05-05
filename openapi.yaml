@@ -1,0 +1,1088 @@
+openapi: 3.0.3
+info:
+  title: MVP Launch API
+  description: |
+    API for MVP Launch platform - data ingestion, forecasting, and visualization.
+  version: 1.0.0
+  contact:
+    name: Forge Intelligence
+    email: dev@forgeintelligence.com
+
+servers:
+  - url: https://api.forgeintelligence.com/api/v1
+    description: Production server
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: Users
+    description: User management operations
+  - name: Data
+    description: Dataset and data record operations
+  - name: ML
+    description: Machine learning and forecasting operations
+  - name: NL Query
+    description: Natural language to SQL translation and query execution
+  - name: Admin
+    description: Administrative operations
+
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+        '401':
+          description: Invalid credentials
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List users
+      operationId: listUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+
+    post:
+      tags:
+        - Users
+      summary: Create user
+      operationId: createUser
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                name:
+                  type: string
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /users/{userId}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      operationId: getUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    patch:
+      tags:
+        - Users
+      summary: Update user
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                role_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: User updated
+
+  /data:
+    get:
+      tags:
+        - Data
+      summary: List datasets
+      operationId: listDatasets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Dataset list
+
+    post:
+      tags:
+        - Data
+      summary: Create/upload dataset
+      operationId: createDataset
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - name
+              properties:
+                name:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+                schema:
+                  type: string
+      responses:
+        '201':
+          description: Dataset created
+
+  /data/{datasetId}:
+    get:
+      tags:
+        - Data
+      summary: Get dataset details
+      operationId: getDataset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Dataset details
+
+    delete:
+      tags:
+        - Data
+      summary: Delete dataset
+      operationId: deleteDataset
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: datasetId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Dataset deleted
+
+  /ml/forecast:
+    post:
+      tags:
+        - ML
+      summary: Generate forecast using Prophet
+      operationId: createForecast
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dataset_id
+                - target_column
+                - periods
+              properties:
+                dataset_id:
+                  type: string
+                  format: uuid
+                target_column:
+                  type: string
+                periods:
+                  type: integer
+                frequency:
+                  type: string
+                  default: D
+      responses:
+        '200':
+          description: Forecast generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  forecast:
+                    type: array
+                    items:
+                      type: object
+                  model_metrics:
+                    type: object
+
+  /ml/analyze:
+    post:
+      tags:
+        - ML
+      summary: Run NLP analysis on text data
+      operationId: runNLPAnalysis
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                analysis_type:
+                  type: string
+                  enum: [sentiment, entities, keywords, summary]
+      responses:
+        '200':
+          description: Analysis complete
+
+  /nl-query/translate:
+    post:
+      tags:
+        - NL Query
+      summary: Translate natural language to SQL and execute
+      operationId: translateNLQuery
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+                - data_source_id
+                - user_id
+              properties:
+                query:
+                  type: string
+                  description: Natural language question
+                data_source_id:
+                  type: string
+                  description: ID of the connected data source
+                user_id:
+                  type: string
+                  description: ID of the user making the query
+                execute:
+                  type: boolean
+                  default: true
+                  description: Whether to execute the generated SQL
+                max_rows:
+                  type: integer
+                  default: 10000
+                  description: Maximum rows to return
+      responses:
+        '200':
+          description: Query translated and optionally executed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  natural_language_query:
+                    type: string
+                  generated_sql:
+                    type: string
+                  executed_sql:
+                    type: string
+                  results:
+                    type: array
+                    items:
+                      type: object
+                  row_count:
+                    type: integer
+                  confidence_score:
+                    type: integer
+                  confidence_level:
+                    type: string
+                    enum: [high, medium, low]
+                  confidence_indicator:
+                    type: string
+                  follow_up_questions:
+                    type: array
+                    items:
+                      type: string
+                  error_message:
+                    type: string
+                  execution_time_ms:
+                    type: integer
+                  status:
+                    type: string
+        '404':
+          description: Data source not found
+        '500':
+          description: Translation or execution failed
+
+  /nl-query/suggest-rephrase:
+    post:
+      tags:
+        - NL Query
+      summary: Suggest rephrase for failed query
+      operationId: suggestRephrase
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - query
+              - error_message
+              properties:
+                query:
+                  type: string
+                error_message:
+                  type: string
+      responses:
+        '200':
+          description: Rephrase suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  original_query:
+                    type: string
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                  reason:
+                    type: string
+
+  /nl-query/schema:
+    get:
+      tags:
+        - NL Query
+      summary: Get database schema for a data source
+      operationId: getNLQuerySchema
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: data_source_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Schema information
+        '404':
+          description: Data source not found
+
+  /nl-query/history:
+    get:
+      tags:
+        - NL Query
+      summary: Get NL query history for a user
+      operationId: getNLQueryHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: data_source_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Query history
+
+  /nl-query/history/{queryId}:
+    get:
+      tags:
+        - NL Query
+      summary: Get a specific query from history
+      operationId: getNLQueryById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: queryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Query details
+        '404':
+          description: Query not found
+    delete:
+      tags:
+        - NL Query
+      summary: Delete a query from history
+      operationId: deleteNLQuery
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: queryId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Query deleted
+        '404':
+          description: Query not found
+
+  /nl-query/recent:
+    get:
+      tags:
+        - NL Query
+      summary: Get recent queries for sidebar
+      operationId: getRecentNLQueries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Recent queries
+
+  /nl-query/confidence:
+    post:
+      tags:
+        - NL Query
+      summary: Get confidence score without executing
+      operationId: getNLQueryConfidence
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+                - data_source_id
+              properties:
+                query:
+                  type: string
+                data_source_id:
+                  type: string
+                user_id:
+                  type: string
+      responses:
+        '200':
+          description: Confidence score
+
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: Admin - List all users
+      operationId: adminListUsers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User list (admin view)
+
+  /anomalies/scan:
+    post:
+      tags:
+        - Anomaly Detection
+      summary: Run anomaly detection scan
+      operationId: scanAnomalies
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dataset_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: metric_name
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Scan completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scanned_datasets:
+                    type: integer
+                  total_anomalies_found:
+                    type: integer
+                  anomalies_by_dataset:
+                    type: object
+
+  /anomalies:
+    get:
+      tags:
+        - Anomaly Detection
+      summary: List anomalies
+      operationId: listAnomalies
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dataset_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [flagged, investigated, dismissed]
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+      responses:
+        '200':
+          description: List of anomalies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Anomaly'
+
+  /anomalies/{anomaly_id}:
+    patch:
+      tags:
+        - Anomaly Detection
+      summary: Update anomaly status
+      operationId: updateAnomaly
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: anomaly_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [investigated, dismissed]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Anomaly updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Anomaly'
+
+  /anomalies/notifications:
+    get:
+      tags:
+        - Anomaly Detection
+      summary: Get anomaly notifications
+      operationId: getNotifications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Notification'
+
+  /anomalies/notifications/{notification_id}/read:
+    post:
+      tags:
+        - Anomaly Detection
+      summary: Mark notification as read
+      operationId: markNotificationRead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Notification marked as read
+
+  /anomalies/thresholds:
+    post:
+      tags:
+        - Anomaly Detection
+      summary: Set anomaly detection threshold
+      operationId: setThreshold
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - metric_name
+              properties:
+                metric_name:
+                  type: string
+                z_score_threshold:
+                  type: integer
+                  default: 3
+                  minimum: 1
+                  maximum: 10
+                iqr_multiplier:
+                  type: integer
+                  default: 3
+                  minimum: 1
+                  maximum: 10
+                enabled:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Threshold set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Threshold'
+    get:
+      tags:
+        - Anomaly Detection
+      summary: List anomaly thresholds
+      operationId: listThresholds
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: dataset_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of thresholds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Threshold'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        role_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    NLQueryRequest:
+      type: object
+      required:
+        - query
+        - data_source_id
+        - user_id
+      properties:
+        query:
+          type: string
+          description: Natural language question
+        data_source_id:
+          type: string
+          description: ID of the connected data source
+        user_id:
+          type: string
+        execute:
+          type: boolean
+          default: true
+        max_rows:
+          type: integer
+          default: 10000
+
+    NLQueryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        natural_language_query:
+          type: string
+        generated_sql:
+          type: string
+        executed_sql:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+        row_count:
+          type: integer
+        confidence_score:
+          type: integer
+        confidence_level:
+          type: string
+          enum: [high, medium, low]
+        confidence_indicator:
+          type: string
+        follow_up_questions:
+          type: array
+          items:
+            type: string
+        error_message:
+          type: string
+        execution_time_ms:
+          type: integer
+        status:
+          type: string
+        created_at:
+          type: string
+
+    RephraseRequest:
+      type: object
+      required:
+        - query
+        - error_message
+      properties:
+        query:
+          type: string
+        error_message:
+          type: string
+
+    RephraseResponse:
+      type: object
+      properties:
+        original_query:
+          type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+
+    QueryHistoryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        query:
+          type: string
+        sql:
+          type: string
+        confidence:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+
+    QueryHistoryResponse:
+      type: object
+      properties:
+        queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueryHistoryItem'
+        total:
+          type: integer
+
+    Anomaly:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        dataset_id:
+          type: string
+          format: uuid
+        metric_name:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        expected_value:
+          type: string
+          nullable: true
+        actual_value:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high]
+        detection_method:
+          type: string
+        status:
+          type: string
+          enum: [flagged, investigated, dismissed]
+        investigated_at:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        anomaly_id:
+          type: string
+          format: uuid
+        read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        anomaly:
+          $ref: '#/components/schemas/Anomaly'
+
+    Threshold:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        dataset_id:
+          type: string
+          format: uuid
+        metric_name:
+          type: string
+        z_score_threshold:
+          type: integer
+        iqr_multiplier:
+          type: integer
+        enabled:
+          type: boolean
