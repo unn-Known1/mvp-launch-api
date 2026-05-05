@@ -109,7 +109,7 @@ jobs:
           pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
@@ -141,12 +141,12 @@ jobs:
         run: pip-audit --desc
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3
         with:
           languages: python
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
 
   build:
     name: Build and Push Docker Image
@@ -185,7 +185,7 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTORY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Scan container image with Trivy
         uses: aquasecurity/trivy-action@master
@@ -196,7 +196,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -257,7 +257,7 @@ jobs:
       - name: Get previous task definition
         id: prev-task
         run: |
-          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }}-staging --services ${{ env.ECS_SERVICE }}-staging --query 'services[0].taskSets[0].taskDefinition' --output text)
+          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }}-staging --services ${{ env.ECS_SERVICE }}-staging --query 'services[0].deployments[0].taskDefinition' --output text)
           echo "Previous task definition: $TASK_DEF_ARN"
           aws ecs describe-task-definition --task-definition $TASK_DEF_ARN --query taskDefinition > previous-task-definition.json
 
@@ -326,7 +326,7 @@ jobs:
       - name: Get previous task definition
         id: prev-task
         run: |
-          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].taskSets[0].taskDefinition' --output text)
+          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].deployments[0].taskDefinition' --output text)
           echo "Previous task definition: $TASK_DEF_ARN"
           aws ecs describe-task-definition --task-definition $TASK_DEF_ARN --query taskDefinition > previous-task-definition.json
 
