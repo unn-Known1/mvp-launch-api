@@ -16,8 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main import app
 from csv_upload_router import detect_column_type
-from models import Dataset, DataRecord, ImportBatch, Base
+from models import Dataset, DataRecord, ImportBatch, Base, User
 from database import engine
+from auth import get_current_user
 
 
 class TestColumnTypeDetection(unittest.TestCase):
@@ -53,6 +54,10 @@ class TestCSVUploadEndpoints(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        from collections import namedtuple
+        MockUser = namedtuple("MockUser", ["id", "email", "name", "is_active"])
+        cls.mock_user = MockUser(id="test-user-id", email="test@test.com", name="test", is_active=True)
+        app.dependency_overrides[get_current_user] = lambda: cls.mock_user
         cls.client = TestClient(app)
 
     def setUp(self):
@@ -87,10 +92,10 @@ class TestCSVUploadEndpoints(unittest.TestCase):
 
     def test_detect_file_too_large(self):
         """Test that files over 100MB are rejected."""
-        large_file = b"a,b\n" + b"1,2\n" * (50 * 1024 * 1024 // 4)
+        large_content = b"x" * (100 * 1024 * 1024 + 1)  # Just over 100MB
         response = self.client.post(
             "/api/v1/csv/detect",
-            files={"file": ("large.csv", large_file, "text/csv")},
+            files={"file": ("large.csv", large_content, "text/csv")},
         )
         self.assertEqual(response.status_code, 413)
 
@@ -103,9 +108,8 @@ class TestCSVUploadEndpoints(unittest.TestCase):
         mock_session.return_value = mock_db
 
         response = self.client.post(
-            "/api/v1/csv/upload",
+            "/api/v1/csv/upload?dataset_name=Test%20Dataset",
             files={"file": ("data.csv", self.test_csv_content, "text/csv")},
-            data={"dataset_name": "Test Dataset"},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -133,8 +137,22 @@ class TestCSVUploadEndpoints(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    def test_list_csv_datasets(self):
+    @patch("csv_upload_router.SessionLocal")
+    def test_list_csv_datasets(self, mock_session):
         """Test listing CSV datasets."""
+        mock_db = MagicMock()
+        mock_dataset = MagicMock()
+        mock_dataset.id = "123"
+        mock_dataset.name = "Test"
+        mock_dataset.description = None
+        mock_dataset.row_count = 10
+        mock_dataset.size_bytes = 100
+        mock_dataset.status = "ready"
+        mock_dataset.schema = {"columns": []}
+        mock_dataset.created_at = None
+        mock_db.query.return_value.filter.return_value.all.return_value = [mock_dataset]
+        mock_session.return_value = mock_db
+
         response = self.client.get("/api/v1/csv/datasets")
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.json(), list)
