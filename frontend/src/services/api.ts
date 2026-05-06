@@ -130,6 +130,52 @@ export async function listCsvDatasets(): Promise<Dataset[]> {
   return response.json()
 }
 
+export interface UploadProgress {
+  loaded: number
+  total: number
+  percentage: number
+}
+
+export async function uploadCsvDataset(
+  file: File,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<Dataset> {
+  const token = localStorage.getItem("access_token")
+  const formData = new FormData()
+  formData.append("file", file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open("POST", `${API_BASE}/csv/upload`)
+
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`)
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress({
+          loaded: event.loaded,
+          total: event.total,
+          percentage: Math.round((event.loaded / event.total) * 100),
+        })
+      }
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText))
+      } else {
+        const error = JSON.parse(xhr.responseText).detail || "Upload failed"
+        reject(new Error(error))
+      }
+    }
+
+    xhr.onerror = () => reject(new Error("Network error during upload"))
+    xhr.send(formData)
+  })
+}
+
 // ─── NL Query ────────────────────────────────────────────────────────────────
 
 export interface NLQueryRequest {
@@ -198,9 +244,15 @@ export interface Anomaly {
   actual_value: string
   severity: "low" | "medium" | "high"
   detection_method: string
+  z_score: string | null
+  iqr_lower: string | null
+  iqr_upper: string | null
   status: "flagged" | "investigated" | "dismissed"
   investigated_at: string | null
+  investigated_by: string | null
   notes: string | null
+  confidence: number | null
+  model_version: string | null
   created_at: string
 }
 

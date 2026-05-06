@@ -3,6 +3,10 @@ import { AppLayout } from "./components/layouts/AppLayout"
 import { Home } from "./pages/Home"
 import { Dashboard } from "./pages/Dashboard"
 import { QueryPage } from "./pages/QueryPage"
+import { DatasetsList } from "./pages/DatasetsList"
+import { DatasetDetail } from "./pages/DatasetDetail"
+import { DatasetUpload } from "./pages/DatasetUpload"
+import { AnomaliesPage } from "./pages/AnomaliesPage"
 import { Login } from "./pages/Login"
 import { ProtectedRoute } from "./components/auth/ProtectedRoute"
 import { RoleBasedRoute } from "./components/auth/RoleBasedRoute"
@@ -45,6 +49,38 @@ function App() {
             element={
               <RoleBasedRoute allowedRoles={["admin", "analyst"]}>
                 <QueryPage />
+              </RoleBasedRoute>
+            }
+          />
+          <Route
+            path="datasets"
+            element={
+              <RoleBasedRoute allowedRoles={["admin", "analyst", "viewer"]}>
+                <DatasetsList />
+              </RoleBasedRoute>
+            }
+          />
+          <Route
+            path="datasets/upload"
+            element={
+              <RoleBasedRoute allowedRoles={["admin", "analyst"]}>
+                <DatasetUpload />
+              </RoleBasedRoute>
+            }
+          />
+          <Route
+            path="datasets/:id"
+            element={
+              <RoleBasedRoute allowedRoles={["admin", "analyst", "viewer"]}>
+                <DatasetDetail />
+              </RoleBasedRoute>
+            }
+          />
+          <Route
+            path="anomalies"
+            element={
+              <RoleBasedRoute allowedRoles={["admin", "analyst", "viewer"]}>
+                <AnomaliesPage />
               </RoleBasedRoute>
             }
           />
