@@ -39,11 +39,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS configuration - use environment variable for allowed origins
+# CWE-942: Never use "*" with allow_credentials=True in production
+_allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
+_allowed_origins = (
+    [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
+    if _allowed_origins_str
+    else ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
