@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
-
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
+import { getToken as apiGetToken } from "../services/api"
 
 interface User {
   id: string
@@ -27,34 +26,6 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
         .join('')
     )
     return JSON.parse(jsonPayload)
-  } catch {
-    return null
-  }
-}
-
-async function refreshToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem("refresh_token")
-  if (!refreshToken) return null
-
-  try {
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    })
-
-    if (!response.ok) {
-      localStorage.removeItem("access_token")
-      localStorage.removeItem("refresh_token")
-      localStorage.removeItem("token_expires_at")
-      return null
-    }
-
-    const data = await response.json()
-    localStorage.setItem("access_token", data.access_token)
-    localStorage.setItem("refresh_token", data.refresh_token)
-    localStorage.setItem("token_expires_at", String(Date.now() + data.expires_in * 1000))
-    return data.access_token
   } catch {
     return null
   }
@@ -92,18 +63,7 @@ export function useAuth(): AuthState & { logout: () => void; getToken: () => Pro
   }, [])
 
   const getToken = useCallback(async (): Promise<string | null> => {
-    const token = localStorage.getItem("access_token")
-    const expiresAt = localStorage.getItem("token_expires_at")
-
-    if (token && expiresAt) {
-      const expiresIn = parseInt(expiresAt) - Date.now()
-      if (expiresIn < 60000) {
-        return await refreshToken()
-      }
-      return token
-    }
-
-    return await refreshToken()
+    return await apiGetToken()
   }, [])
 
   useEffect(() => {

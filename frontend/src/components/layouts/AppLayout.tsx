@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Outlet, Link, useLocation } from "react-router-dom"
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
 import {
   LayoutDashboard,
   Home,
@@ -10,10 +10,13 @@ import {
   FileText,
   Menu,
   X,
+  LogOut,
+  User,
 } from "lucide-react"
 import { useAppStore } from "../../store/useAppStore"
 import { useNotifications } from "../../hooks/useNotifications"
 import { NotificationBell } from "../../pages/AnomaliesPage"
+import { useAuth } from "../../hooks/useAuth"
 
 interface NavItem {
   label: string
@@ -33,9 +36,16 @@ const NAV_ITEMS: NavItem[] = [
 
 export function AppLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const { sidebarOpen, toggleSidebar } = useAppStore()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { notifications, markRead, refetch: refetchNotifs } = useNotifications(true)
+
+  function handleLogout() {
+    logout()
+    navigate("/login", { replace: true })
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -78,12 +88,35 @@ export function AppLayout() {
             })}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
             <NotificationBell
               notifications={notifications}
               onMarkRead={markRead}
               onRefetch={refetchNotifs}
             />
+
+            {/* User info and logout */}
+            {user && (
+              <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2 text-sm">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">{user.email}</span>
+                  {user.role && (
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-xs">
+                      {user.role}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-md hover:bg-accent transition-colors"
+                  title="Sign out"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden md:inline">Sign out</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>

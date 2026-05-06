@@ -1,32 +1,43 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
 
 async function getHeaders(includeContentType = true): Promise<Record<string, string>> {
-  const token = localStorage.getItem("access_token")
-  const expiresAt = localStorage.getItem("token_expires_at")
-
-  let activeToken = token
-  if (token && expiresAt) {
-    const expiresIn = parseInt(expiresAt) - Date.now()
-    if (expiresIn < 60000) {
-      activeToken = await refreshToken()
-    }
-  }
-
   const headers: Record<string, string> = {}
   if (includeContentType) headers["Content-Type"] = "application/json"
-  if (activeToken) headers.Authorization = `Bearer ${activeToken}`
+
+  try {
+    const token = await getToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+  } catch {
+    // Token refresh failed, proceed without auth header
+  }
+
   return headers
 }
 
-async function refreshToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem("refresh_token")
-  if (!refreshToken) return localStorage.getItem("access_token")
+export async function getToken(): Promise<string | null> {
+  const token = localStorage.getItem("access_token")
+  const expiresAt = localStorage.getItem("token_expires_at")
+
+  if (token && expiresAt) {
+    const expiresIn = parseInt(expiresAt) - Date.now()
+    if (expiresIn < 60000) {
+      return await refreshAccessToken()
+    }
+    return token
+  }
+
+  return await refreshAccessToken()
+}
+
+export async function refreshAccessToken(): Promise<string | null> {
+  const storedRefreshToken = localStorage.getItem("refresh_token")
+  if (!storedRefreshToken) return null
 
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      body: JSON.stringify({ refresh_token: storedRefreshToken }),
     })
 
     if (!response.ok) {
@@ -42,7 +53,7 @@ async function refreshToken(): Promise<string | null> {
     localStorage.setItem("token_expires_at", String(Date.now() + data.expires_in * 1000))
     return data.access_token
   } catch {
-    return localStorage.getItem("access_token")
+    return null
   }
 }
 
@@ -140,7 +151,7 @@ export async function uploadCsvDataset(
   file: File,
   onProgress?: (progress: UploadProgress) => void
 ): Promise<Dataset> {
-  const token = localStorage.getItem("access_token")
+  const token = await getToken()
   const formData = new FormData()
   formData.append("file", file)
 
