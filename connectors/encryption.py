@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import serialization
 
 
 def _get_encryption_key() -> bytes:
@@ -16,8 +17,9 @@ def _get_encryption_key() -> bytes:
     if key_env:
         if len(key_env) == 44:
             return key_env.encode()
-        return Fernet.generate_key()
+        raise ValueError("CREDENTIAL_ENCRYPTION_KEY must be exactly 44 characters (Fernet key)")
 
+    # Use PBKDF2 for deterministic key generation in development
     salt = os.environ.get("CREDENTIAL_ENCRYPTION_SALT", "forge-intelligence-dev-salt").encode()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
@@ -26,9 +28,11 @@ def _get_encryption_key() -> bytes:
         iterations=100_000,
         backend=default_backend(),
     )
-    from cryptography.hazmat.primitives import serialization
-
-    return Fernet.generate_key()
+    # Derive key from password - use a consistent password for dev
+    password = os.environ.get("CREDENTIAL_KEY_PASSWORD", "development-key-derivation-password").encode()
+    key_material = kdf.derive(password)
+    # Convert to Fernet-compatible format (base64-encoded 32-byte key)
+    return Fernet.generate_key_from_password(key_material, hashes.SHA256())
 
 
 _encryption_key = None
