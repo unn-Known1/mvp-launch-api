@@ -10,6 +10,7 @@ interface AuthState {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
+  hasRole: (requiredRole: string | string[]) => boolean
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -78,10 +79,17 @@ export function useAuth(): AuthState & { logout: () => void } {
     setUser(null)
   }, [])
 
+  const hasRole = useCallback((requiredRole: string | string[]): boolean => {
+    if (!user?.role) return false
+    const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole]
+    return roles.includes(user.role)
+  }, [user?.role])
+
   return {
     user,
     isAuthenticated: !!user,
     isLoading,
+    hasRole,
     logout,
   }
 }
