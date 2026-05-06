@@ -11,6 +11,7 @@ import { useAnomalies } from "../hooks/useAnomalies"
 import { useDatasets } from "../hooks/useDatasets"
 import { useQueryHistory } from "../hooks/useQueryHistory"
 import { useScheduledReports } from "../hooks/useScheduledReports"
+import { useForecast } from "../hooks/useForecast"
 import { useNotifications } from "../hooks/useNotifications"
 import { useAuth } from "../hooks/useAuth"
 
@@ -26,6 +27,9 @@ function generateChartData(): ChartData {
   }
 }
 
+// TODO: Replace with real forecast ID from user's forecasts list
+const DEMO_FORECAST_ID = "demo-forecast-1"
+
 export function Dashboard() {
   const { user } = useAuth()
   const userId = user?.id || ""
@@ -35,6 +39,7 @@ export function Dashboard() {
   const { queries, loading: queriesLoading, error: queriesError } = useQueryHistory({ userId, limit: 50, autoFetch: true })
   const { anomalies, loading: anomaliesLoading, error: anomaliesError, updateStatus } = useAnomalies({ autoFetch: true })
   const { reports, loading: reportsLoading, error: reportsError } = useScheduledReports({ userId, autoFetch: true })
+  const { chartData: forecastChartData, loading: forecastLoading, error: forecastError } = useForecast({ forecastId: DEMO_FORECAST_ID, autoFetch: true })
   const { unreadCount } = useNotifications(true)
 
   // Derived values
@@ -46,7 +51,7 @@ export function Dashboard() {
   const chartData = generateChartData()
 
   // Combined error state
-  const hasError = datasetsError || queriesError || anomaliesError || reportsError
+  const hasError = datasetsError || queriesError || anomaliesError || reportsError || forecastError
 
   return (
     <div className="space-y-6">
@@ -65,6 +70,7 @@ export function Dashboard() {
           {queriesError && <ErrorBanner message={`Query history: ${queriesError}`} />}
           {anomaliesError && <ErrorBanner message={`Anomalies: ${anomaliesError}`} />}
           {reportsError && <ErrorBanner message={`Reports: ${reportsError}`} />}
+          {forecastError && <ErrorBanner message={`Forecast: ${forecastError}`} />}
         </div>
       )}
 
@@ -147,6 +153,25 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Forecast chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Forecast</CardTitle>
+          <CardDescription>Time-series forecast data</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {forecastLoading ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Loading forecast...</p>
+          ) : forecastChartData ? (
+            <Chart data={forecastChartData} type="line" title="Forecast" />
+          ) : forecastError ? (
+            <EmptyState title="Forecast unavailable" description="Unable to load forecast data" />
+          ) : (
+            <EmptyState title="No forecast" description="Create a forecast to see predictions here" />
+          )}
+        </CardContent>
+      </Card>
 
       {/* Activity Feed and Recent Anomalies */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
