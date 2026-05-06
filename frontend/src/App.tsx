@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom"
-import { AppLayout } from "./components/layout/AppLayout"
+import { AppLayout } from "./components/layouts/AppLayout"
 import { Home } from "./pages/Home"
 import { Dashboard } from "./pages/Dashboard"
+import { QueryPage } from "./pages/QueryPage"
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/query" element={<QueryPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
