@@ -1,11 +1,7 @@
-"""
-Tests for Async ML Workers module.
-"""
+"""Tests for Async ML Workers module."""
 
-from unittest.mock import MagicMock, patch, PropertyMock
-
+from unittest.mock import MagicMock, patch
 import pytest
-
 from nl_to_sql import NLToSQLTranslator, SchemaInfo
 
 
@@ -72,7 +68,7 @@ class TestAnomalyScanTask:
     def test_run_anomaly_scan_single_dataset(self, mock_session_local, mock_scan):
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
-        mock_scan.return_value = {"ds-1": 2}
+        mock_scan.return_value = {"ds-1": 4}
 
         from ml_workers import run_anomaly_scan_task
         result = run_anomaly_scan_task(user_id="user-1", dataset_id="ds-1")
@@ -82,10 +78,10 @@ class TestAnomalyScanTask:
 
 
 class TestNLPQueryTask:
-    @patch("ml_workers.create_translator_from_env")
+    @patch("connectors.data_source_store")
+    @patch("nl_langchain.create_translator_from_env")
     @patch("ml_workers._get_schema_info_from_config")
-    @patch("ml_workers.data_source_store")
-    def test_run_nlp_query_no_execute(self, mock_store, mock_schema, mock_translator):
+    def test_run_nlp_query_no_execute(self, mock_schema, mock_translator, mock_store):
         mock_config = MagicMock()
         mock_store.get.return_value = mock_config
         mock_schema.return_value = SchemaInfo(tables=[])
@@ -110,11 +106,11 @@ class TestNLPQueryTask:
         assert result["status"] == "completed"
         assert result["generated_sql"] == "SELECT * FROM data"
 
-    @patch("ml_workers.create_connector")
-    @patch("ml_workers.create_translator_from_env")
+    @patch("connectors.create_connector")
+    @patch("connectors.data_source_store")
+    @patch("nl_langchain.create_translator_from_env")
     @patch("ml_workers._get_schema_info_from_config")
-    @patch("ml_workers.data_source_store")
-    def test_run_nlp_query_with_execute(self, mock_store, mock_schema, mock_translator, mock_connector):
+    def test_run_nlp_query_with_execute(self, mock_schema, mock_translator, mock_store, mock_connector):
         mock_config = MagicMock()
         mock_store.get.return_value = mock_config
         mock_schema.return_value = SchemaInfo(tables=[])
