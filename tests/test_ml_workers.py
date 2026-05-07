@@ -12,11 +12,13 @@ class TestForecastTask:
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
 
+        from datetime import datetime, timezone
         mock_forecast = MagicMock()
         mock_forecast.id = "test-forecast-id"
         mock_forecast.status = "completed"
         mock_forecast.model_metrics = {"mae": 1.0}
         mock_forecast.predictions = [{"ds": "2024-01-01", "yhat": 100}]
+        mock_forecast.completed_at = datetime.now(timezone.utc)
         mock_generate.return_value = mock_forecast
 
         from ml_workers import run_forecast_task
@@ -162,3 +164,75 @@ class TestQueueFunctions:
         from ml_workers import enqueue_forecast
         job_id = enqueue_forecast("ds-1", "sales", 10)
         assert job_id == "job-123"
+
+
+class TestWorkerHealth:
+    @patch("ml_workers._check_redis_available")
+    def test_get_worker_health_returns_status(self, mock_redis_check):
+        mock_redis_check.return_value = True
+
+        from ml_workers import get_worker_health
+        health = get_worker_health()
+
+        assert "redis_available" in health
+        assert "status" in health
+        assert "total_tasks_processed" in health
+        assert "failure_rate_pct" in health
+
+    def test_get_job_status_sync_mode(self):
+        from ml_workers import get_job_status
+
+        result = get_job_status("sync:test-forecast-id")
+
+        assert result["status"] == "completed"
+        assert result["mode"] == "sync_fallback"
+
+
+class TestRetryWrapper:
+    def test_retry_wrapper_succeeds_on_first_try(self):
+        from ml_workers import _retry_wrapper
+
+        call_count = 0
+
+        def success_func():
+            nonlocal call_count
+            call_count += 1
+            return "ok"
+
+        result = _retry_wrapper(success_func, max_retries=2)
+        assert result == "ok"
+        assert call_count == 1
+
+    def test_retry_wrapper_succeeds_after_retry(self):
+        from ml_workers import _retry_wrapper
+
+        call_count = 0
+
+        def flaky_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise ValueError("Temporary error")
+            return "ok"
+
+        result = _retry_wrapper(flaky_func, max_retries=2)
+        assert result == "ok"
+        assert call_count == 2
+
+
+class TestSyncFallback:
+    @patch("ml_workers.get_redis_connection")
+    @patch("ml_workers.run_forecast_task")
+    def test_enqueue_forecast_falls_back_to_sync(self, mock_run_task, mock_redis):
+        mock_redis.side_effect = ConnectionError("Redis unavailable")
+
+        from ml_workers import enqueue_forecast
+        mock_run_task.return_value = {
+            "forecast_id": "sync-123",
+            "status": "completed",
+        }
+
+        job_id = enqueue_forecast("ds-1", "sales", 10)
+
+        assert job_id is not None
+        assert job_id.startswith("sync:")
