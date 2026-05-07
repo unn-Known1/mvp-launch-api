@@ -1,85 +1,179 @@
-# MVP Launch API
+# Forge Intelligence — MVP Launch API
 
-A FastAPI-based backend for the MVP Launch platform, providing data ingestion, forecasting, NLP, and anomaly detection capabilities.
+A FastAPI-based backend for the Forge Intelligence BI platform, providing data ingestion, natural-language querying, forecasting, anomaly detection, and automated reporting. Built with Python, PostgreSQL (pgvector), Redis, and AWS.
 
 ## Project Status
 
-| Feature | Status | Issue |
-|---------|--------|-------|
-| Database schema (pgvector, pooling) | In Progress | [#1](https://github.com/unn-Known1/mvp-launch-api/issues/1) |
-| RBAC and authentication | In Progress | [#2](https://github.com/unn-Known1/mvp-launch-api/issues/2) |
-| Automated reporting engine | In Progress | [#3](https://github.com/unn-Known1/mvp-launch-api/issues/3) |
-| Predictive analytics (Prophet) | In Progress | [#4](https://github.com/unn-Known1/mvp-launch-api/issues/4) |
-| Anomaly detection system | In Progress | [#5](https://github.com/unn-Known1/mvp-launch-api/issues/5) |
-| Infrastructure (Terraform + AWS) | In Progress | [#6](https://github.com/unn-Known1/mvp-launch-api/issues/6) |
-| Chart generation & visualization | Todo | [#7](https://github.com/unn-Known1/mvp-launch-api/issues/7) |
-| Frontend project setup | Todo | [#8](https://github.com/unn-Known1/mvp-launch-api/issues/8) |
+| Feature | Status | Details |
+|---------|--------|---------|
+| Database schema (pgvector, pooling) | ✅ Done | Core entities, pgvector for embeddings |
+| RBAC and authentication | ✅ Done | JWT auth, role-based access, token blacklisting |
+| Automated reporting engine | ✅ Done | AI summaries, scheduled report generation |
+| Predictive analytics (Prophet) | ✅ Done | Time-series forecasting with Prophet |
+| Anomaly detection system | ✅ Done | Real-time Z-score based anomaly detection |
+| Infrastructure (Terraform + AWS) | ✅ Done | CI/CD pipeline, ECS Fargate, RDS, S3 |
+| Chart generation & visualization | ✅ Done | Backend chart rendering layer |
+| Frontend project setup | ✅ Done | React + TypeScript + Vite |
+| Natural Language Query | ✅ Done | NL-to-SQL via LangChain pipeline |
+| Data connectors (CSV, DB) | ✅ Done | CSV auto-detection, SQL connectors |
+| Dashboard & Data Visualization UI | 🔄 In Review | Interactive dashboards with D3.js |
+| Dataset Management UI | 🔄 In Review | Dataset CRUD, schema management |
+| Anomaly Detection Dashboard | 🔄 In Review | Anomaly visualization panel |
+| Real-Time Anomaly Alerts | 🔄 In Progress | WebSocket-based alert system |
+| User Onboarding Flow | 🔄 In Progress | Guided onboarding |
+| Data Export Download | 🔄 In Progress | CSV/JSON export |
+| E2E Integration Tests | 🔄 In Progress | End-to-end test suite |
+| Report Scheduling UI | 📋 Todo | Frontend schedule configuration |
+| API Versioning Strategy | 📋 Todo | Versioned API routes |
+| Frontend Bundle Optimization | 📋 Todo | Code splitting, lazy loading |
+| Observability Wiring | 📋 Todo | Structured logging, metrics |
 
 ## Features
 
-- **Data Ingestion**: CSV upload and database connectors
-- **Natural Language Query**: SQL generation from natural language
-- **Anomaly Detection**: Real-time anomaly detection in time series data
-- **Forecasting**: Predictive analytics using Prophet and scikit-learn
-- **RESTful API**: FastAPI with automatic OpenAPI documentation
+- **Data Ingestion** — CSV upload with auto-schema detection, PostgreSQL and MySQL connectors
+- **Natural Language Query** — Ask questions in plain English; LangChain translates to SQL
+- **Anomaly Detection** — Real-time Z-score based detection in time-series data
+- **Forecasting** — Predictive analytics with Prophet and scikit-learn
+- **Automated Reporting** — AI-generated report summaries with scheduling
+- **Role-Based Access Control** — JWT authentication with granular permissions
+- **RESTful API** — Auto-documented OpenAPI 3.0 endpoints
+
+## Architecture
+
+See the full architecture and security documents:
+
+- [System Architecture](ARCHITECTURE.md) — component diagram, data flow, deployment topology
+- [Security Architecture](SECURITY.md) — auth, encryption, VPC layout, incident response
+- [OpenAPI Specification](openapi.yaml) — full API contract (1768 lines)
+
+## API Examples
+
+### Authentication
+
+```bash
+# Login
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "your-password"}'
+
+# Response
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "expires_in": 900
+}
+```
+
+### Natural Language Query
+
+```bash
+curl -X POST http://localhost:8000/api/v1/nl/query \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Show me total sales by region for last quarter"}'
+
+# Response
+{
+  "generated_sql": "SELECT region, SUM(sales) FROM orders WHERE created_at >= NOW() - INTERVAL '3 months' GROUP BY region",
+  "results": [...],
+  "confidence_score": 92,
+  "confidence_level": "high",
+  "follow_up_questions": ["Would you like to see a breakdown by month?"],
+  "execution_time_ms": 145
+}
+```
+
+### Anomaly Detection
+
+```bash
+curl -X POST http://localhost:8000/api/v1/anomaly/detect \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"dataset_id": "uuid", "metric": "page_views", "window": "24h"}'
+
+# Response
+{
+  "anomalies": [
+    {"timestamp": "2026-05-01T14:00:00Z", "value": 12450, "z_score": 3.8, "severity": "high"}
+  ],
+  "threshold": 3.0,
+  "total_points_analyzed": 1440
+}
+```
+
+### Forecasting
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ml/forecast \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"dataset_id": "uuid", "periods": 30, "interval": "daily"}'
+
+# Response
+{
+  "forecast": [
+    {"ds": "2026-06-01", "yhat": 15200, "yhat_lower": 14100, "yhat_upper": 16300}
+  ],
+  "model": "prophet",
+  "metrics": {"mae": 320, "rmse": 410}
+}
+```
 
 ## Prerequisites
 
 - Python 3.11+
-- PostgreSQL 15+
+- PostgreSQL 15+ (with pgvector extension for embeddings)
 - Redis 7+
+- Node.js 20+ (for frontend development)
 - Docker (optional, for containerized deployment)
 
 ## Setup
 
-### Local Development
+### Local Development (Backend)
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd mvp-launch-api
-   ```
+```bash
+# Clone and enter
+git clone https://github.com/unn-Known1/mvp-launch-api.git
+cd mvp-launch-api
 
-2. **Create a virtual environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+# Virtual environment
+python -m venv venv
+source venv/bin/activate
 
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+# Install dependencies
+pip install -r requirements.txt
 
-4. **Set up environment variables**
-   ```bash
-   export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/app_db"
-   export REDIS_URL="redis://localhost:6379/0"
-   ```
+# Environment variables
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/app_db"
+export REDIS_URL="redis://localhost:6379/0"
+export SECRET_KEY="your-secret-key"
 
-5. **Initialize the database**
-   ```bash
-   python init_db.py
-   ```
+# Initialize database
+python init_db.py
 
-6. **Run the application**
-   ```bash
-   python main.py
-   # or
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   ```
+# Run server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Local Development (Frontend)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend dev server runs on `http://localhost:5173` and proxies API requests to the backend.
 
 ### Docker
 
-1. **Build the Docker image**
-   ```bash
-   docker build -t mvp-launch-api .
-   ```
-
-2. **Run the container**
-   ```bash
-   docker run -p 8000:8000 -e DATABASE_URL="postgresql://..." mvp-launch-api
-   ```
+```bash
+docker build -t mvp-launch-api .
+docker run -p 8000:8000 \
+  -e DATABASE_URL="postgresql://postgres:postgres@host.docker.internal:5432/app_db" \
+  -e REDIS_URL="redis://host.docker.internal:6379/0" \
+  mvp-launch-api
+```
 
 ## API Documentation
 
@@ -91,42 +185,63 @@ Once running, visit:
 ## Testing
 
 ```bash
-# Run all tests
+# Backend tests
 pytest tests/ -v
-
-# Run with coverage
 pytest tests/ -v --cov=. --cov-report=term
-
-# Run specific test file
 pytest tests/test_anomaly.py -v
+
+# Frontend tests (when frontend directory present)
+cd frontend && npm test
 ```
 
 ## Project Structure
 
 ```
 mvp-launch-api/
-├── main.py                 # FastAPI application entry point
-├── database.py            # Database configuration
-├── models.py              # SQLAlchemy models
-├── anomaly.py             # Anomaly detection logic
-├── anomaly_router.py      # Anomaly detection API routes
-├── nl_to_sql.py           # Natural language to SQL conversion
-├── nl_query_router.py     # NLP query API routes
-├── csv_upload_router.py   # CSV upload API routes
-├── query_history.py       # Query history management
-├── connectors/            # Database connectors
-├── tests/                 # Test suite
-├── infrastructure/        # Terraform and deployment configs
-├── .github/workflows/     # CI/CD pipeline
-├── Dockerfile             # Docker configuration
-├── requirements.txt       # Python dependencies
-└── alembic/               # Database migrations
+├── main.py                 # FastAPI entry point
+├── database.py             # DB config + pgvector
+├── models.py               # SQLAlchemy ORM models
+├── auth.py                 # JWT auth + RBAC logic
+├── auth_router.py          # Auth endpoints
+├── role_router.py          # Role management endpoints
+├── anomaly.py              # Anomaly detection engine
+├── anomaly_router.py       # Anomaly API routes
+├── forecast.py             # Prophet forecasting
+├── forecast_router.py      # Forecasting API routes
+├── ml_workers.py           # Async ML worker tasks
+├── nl_langchain.py         # LangChain NL pipeline
+├── nl_to_sql.py            # NL-to-SQL translator
+├── nl_query_router.py      # Query API routes
+├── csv_upload_router.py    # CSV ingestion
+├── query_history.py        # Query history + follow-ups
+├── report_router.py        # Report generation
+├── connectors/             # External DB connectors
+│   ├── postgres.py
+│   └── mysql.py
+├── frontend/               # React + TypeScript SPA
+│   ├── src/
+│   └── package.json
+├── tests/                  # Pytest suite
+│   ├── test_anomaly.py
+│   ├── test_auth.py
+│   └── test_forecast.py
+├── infrastructure/         # Terraform + deployment
+│   └── terraform/
+├── .github/workflows/      # CI/CD pipeline
+├── alembic/                # DB migrations
+├── openapi.yaml            # API contract
+├── Dockerfile
+├── requirements.txt
+├── ARCHITECTURE.md
+├── SECURITY.md
+├── PERFORMANCE.md
+└── CI-CD-SETUP-GUIDE.md
 ```
 
 ## Contributing
 
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is proprietary and confidential. All rights reserved.
+Proprietary and confidential. All rights reserved. &copy; Forge Intelligence
