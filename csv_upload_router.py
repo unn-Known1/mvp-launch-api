@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import Dataset, DataRecord, ImportBatch
+from auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/csv", tags=["CSV Upload"])
 
@@ -127,7 +128,7 @@ def analyze_csv_types(df: pd.DataFrame) -> list[ColumnTypeInfo]:
 # --- Endpoints ---
 
 @router.post("/detect", response_model=CSVDetectionResponse)
-async def detect_csv_types(file: UploadFile = File(...)):
+async def detect_csv_types(file: UploadFile = File(...), current_user=Depends(get_current_user)):
     """Upload a CSV file and auto-detect column types without storing."""
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
@@ -158,8 +159,8 @@ async def upload_csv(
     file: UploadFile = File(...),
     dataset_name: Optional[str] = None,
     description: Optional[str] = None,
-    user_id: str = "00000000-0000-0000-0000-000000000001",
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Upload a CSV file, auto-detect types, and store in database."""
     if not file.filename.endswith(".csv"):
@@ -186,7 +187,7 @@ async def upload_csv(
     dataset = Dataset(
         name=name,
         description=description or f"Uploaded from {file.filename}",
-        user_id=user_id,
+        user_id=str(current_user.id),
         schema=schema,
         row_count=len(df),
         size_bytes=file_size,
@@ -264,9 +265,9 @@ async def upload_csv(
 
 
 @router.get("/datasets", response_model=list[DatasetResponse])
-def list_csv_datasets(db: Session = Depends(get_db)):
-    """List all CSV-imported datasets."""
-    datasets = db.query(Dataset).filter(Dataset.schema.isnot(None)).all()
+def list_csv_datasets(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """List all CSV-imported datasets for the current user."""
+    datasets = db.query(Dataset).filter(Dataset.schema.isnot(None), Dataset.user_id == current_user.id).all()
     return [
         DatasetResponse(
             id=str(d.id),

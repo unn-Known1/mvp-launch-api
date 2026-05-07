@@ -12,10 +12,15 @@ from fastapi.responses import JSONResponse
 
 from database import SessionLocal, engine
 from models import Base
+from auth import seed_default_roles
+from auth_router import router as auth_router
+from role_router import router as role_router
 from connectors.router import router as connectors_router
 from anomaly_router import router as anomaly_router
 from nl_query_router import router as nl_query_router
 from csv_upload_router import router as csv_upload_router
+from report_router import router as report_router
+from forecast_router import router as forecast_router
 
 
 DATABASE_URL = os.getenv(
@@ -27,6 +32,11 @@ DATABASE_URL = os.getenv(
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print(f"Starting MVP Launch API - Database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+    db = SessionLocal()
+    try:
+        seed_default_roles(db)
+    finally:
+        db.close()
     yield
     print("Shutting down MVP Launch API")
     engine.dispose()
@@ -56,10 +66,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
+app.include_router(role_router)
 app.include_router(connectors_router)
 app.include_router(nl_query_router)
 app.include_router(anomaly_router)
 app.include_router(csv_upload_router)
+app.include_router(report_router)
+app.include_router(forecast_router)
 
 
 @app.get("/")

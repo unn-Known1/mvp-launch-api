@@ -4,12 +4,13 @@ FastAPI router for data source management and connection testing.
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from connectors import create_connector
 from connectors.base import DataSourceConfig
 from connectors.store import data_source_store
+from auth import get_current_user, require_permissions
 
 router = APIRouter(prefix="/api/v1/datasources", tags=["Data Sources"])
 
@@ -67,7 +68,7 @@ class ConnectionTestResponse(BaseModel):
 
 
 @router.post("/", response_model=DataSourceResponse, status_code=201)
-def create_data_source(req: CreateDataSourceRequest):
+def create_data_source(req: CreateDataSourceRequest, current_user=Depends(get_current_user)):
     """Create a new data source configuration."""
     config = DataSourceConfig(
         name=req.name,
@@ -84,7 +85,7 @@ def create_data_source(req: CreateDataSourceRequest):
     config.ssl_enabled = req.ssl_enabled
     config.extra_params = req.extra_params
 
-    created = data_source_store.create(config)
+    created = data_source_store.create(config, user_id=str(current_user.id))
     return DataSourceResponse(
         id=created.id,
         name=created.name,
@@ -103,9 +104,9 @@ def create_data_source(req: CreateDataSourceRequest):
 
 
 @router.get("/", response_model=list[DataSourceResponse])
-def list_data_sources():
-    """List all data source configurations."""
-    configs = data_source_store.list_all()
+def list_data_sources(current_user=Depends(get_current_user)):
+    """List all data source configurations for the current user."""
+    configs = data_source_store.list_all(user_id=str(current_user.id))
     return [
         DataSourceResponse(
             id=c.id,
@@ -127,9 +128,9 @@ def list_data_sources():
 
 
 @router.get("/{config_id}", response_model=DataSourceResponse)
-def get_data_source(config_id: str):
+def get_data_source(config_id: str, current_user=Depends(get_current_user)):
     """Get a data source configuration by ID."""
-    config = data_source_store.get(config_id)
+    config = data_source_store.get(config_id, user_id=str(current_user.id))
     if not config:
         raise HTTPException(status_code=404, detail="Data source not found")
     return DataSourceResponse(
@@ -150,10 +151,10 @@ def get_data_source(config_id: str):
 
 
 @router.patch("/{config_id}", response_model=DataSourceResponse)
-def update_data_source(config_id: str, req: UpdateDataSourceRequest):
+def update_data_source(config_id: str, req: UpdateDataSourceRequest, current_user=Depends(get_current_user)):
     """Update a data source configuration."""
     updates = req.model_dump(exclude_unset=True)
-    updated = data_source_store.update(config_id, updates)
+    updated = data_source_store.update(config_id, updates, user_id=str(current_user.id))
     if not updated:
         raise HTTPException(status_code=404, detail="Data source not found")
     return DataSourceResponse(
@@ -174,16 +175,16 @@ def update_data_source(config_id: str, req: UpdateDataSourceRequest):
 
 
 @router.delete("/{config_id}", status_code=204)
-def delete_data_source(config_id: str):
+def delete_data_source(config_id: str, current_user=Depends(get_current_user)):
     """Delete a data source configuration."""
-    if not data_source_store.delete(config_id):
+    if not data_source_store.delete(config_id, user_id=str(current_user.id)):
         raise HTTPException(status_code=404, detail="Data source not found")
 
 
 @router.post("/{config_id}/test", response_model=ConnectionTestResponse)
-def test_connection(config_id: str):
+def test_connection(config_id: str, current_user=Depends(get_current_user)):
     """Test the connection to a data source. Returns result in < 10s."""
-    config = data_source_store.get(config_id)
+    config = data_source_store.get(config_id, user_id=str(current_user.id))
     if not config:
         raise HTTPException(status_code=404, detail="Data source not found")
 

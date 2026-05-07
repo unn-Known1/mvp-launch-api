@@ -21,7 +21,7 @@ class DataSourceStore:
     def __init__(self):
         self._store: dict[str, dict] = {}
 
-    def create(self, config: DataSourceConfig) -> DataSourceConfig:
+    def create(self, config: DataSourceConfig, user_id: str = "") -> DataSourceConfig:
         """Create a new data source configuration."""
         config_id = config.id or str(uuid4())
         config.id = config_id
@@ -43,6 +43,7 @@ class DataSourceStore:
             "connection_timeout": config.connection_timeout,
             "ssl_enabled": config.ssl_enabled,
             "extra_params": config.extra_params,
+            "user_id": user_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -55,14 +56,28 @@ class DataSourceStore:
             return None
         return self._record_to_config(record)
 
-    def list_all(self) -> list[DataSourceConfig]:
-        """List all data source configurations (without decrypted passwords)."""
-        return [self._record_to_config(record, include_password=False) for record in self._store.values()]
+    def list_all(self, user_id: str = "") -> list[DataSourceConfig]:
+        """List all data source configurations (without decrypted passwords), scoped to user."""
+        records = self._store.values()
+        if user_id:
+            records = [r for r in records if r.get("user_id") == user_id]
+        return [self._record_to_config(record, include_password=False) for record in records]
 
-    def update(self, config_id: str, updates: dict) -> Optional[DataSourceConfig]:
+    def get(self, config_id: str, user_id: str = "") -> Optional[DataSourceConfig]:
+        """Get a data source configuration by ID, optionally scoped to user."""
+        record = self._store.get(config_id)
+        if not record:
+            return None
+        if user_id and record.get("user_id") != user_id:
+            return None
+        return self._record_to_config(record)
+
+    def update(self, config_id: str, updates: dict, user_id: str = "") -> Optional[DataSourceConfig]:
         """Update a data source configuration."""
         record = self._store.get(config_id)
         if not record:
+            return None
+        if user_id and record.get("user_id") != user_id:
             return None
 
         updatable_fields = {
@@ -80,12 +95,15 @@ class DataSourceStore:
         record["updated_at"] = datetime.now(timezone.utc).isoformat()
         return self._record_to_config(record)
 
-    def delete(self, config_id: str) -> bool:
+    def delete(self, config_id: str, user_id: str = "") -> bool:
         """Delete a data source configuration."""
-        if config_id in self._store:
-            del self._store[config_id]
-            return True
-        return False
+        record = self._store.get(config_id)
+        if not record:
+            return False
+        if user_id and record.get("user_id") != user_id:
+            return False
+        del self._store[config_id]
+        return True
 
     def _record_to_config(self, record: dict, include_password: bool = True) -> DataSourceConfig:
         """Convert a stored record to a DataSourceConfig."""

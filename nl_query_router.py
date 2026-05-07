@@ -17,7 +17,9 @@ from nl_to_sql import (
     ConfidenceLevel,
     NLQueryResult,
 )
+from nl_langchain import create_translator_from_env
 from query_history import query_history_store
+from auth import get_current_user
 
 router = APIRouter(prefix="/nl-query", tags=["NL Query"])
 
@@ -27,7 +29,6 @@ router = APIRouter(prefix="/nl-query", tags=["NL Query"])
 class NLQueryRequest(BaseModel):
     query: str
     data_source_id: str
-    user_id: str
     execute: bool = True
     max_rows: int = 10000
 
@@ -163,7 +164,7 @@ def _nl_result_to_response(
 # --- Endpoints ---
 
 @router.post("/translate", response_model=NLQueryResponse)
-async def translate_query(request: NLQueryRequest):
+async def translate_query(request: NLQueryRequest, current_user=Depends(get_current_user)):
     """
     Translate a natural language query to SQL with confidence scoring.
     Optionally executes the query if execute=True.
@@ -171,7 +172,7 @@ async def translate_query(request: NLQueryRequest):
     config = _get_datasource_config(request.data_source_id)
     schema_info = _get_schema_info(config)
 
-    translator = NLToSQLTranslator()
+    translator = create_translator_from_env()
     result = translator.translate(
         natural_language_query=request.query,
         schema_info=schema_info,
@@ -212,7 +213,7 @@ async def translate_query(request: NLQueryRequest):
 
     # Store in history
     stored = query_history_store.store_query(
-        user_id=request.user_id,
+        user_id=str(current_user.id),
         natural_language_query=request.query,
         generated_sql=result.generated_sql,
         executed_sql=executed_sql,
@@ -233,11 +234,11 @@ async def translate_query(request: NLQueryRequest):
 
 
 @router.post("/suggest-rephrase", response_model=RephraseResponse)
-async def suggest_rephrase(request: RephraseRequest):
+async def suggest_rephrase(request: RephraseRequest, current_user=Depends(get_current_user)):
     """
     Suggest rephrasing for a failed or ambiguous query.
     """
-    translator = NLToSQLTranslator()
+    translator = create_translator_from_env()
     suggestion = translator.suggest_rephrase(
         natural_language_query=request.query,
         error_message=request.error_message,
@@ -250,7 +251,7 @@ async def suggest_rephrase(request: RephraseRequest):
 
 
 @router.get("/schema", response_model=dict)
-async def get_schema(data_source_id: str):
+async def get_schema(data_source_id: str, current_user=Depends(get_current_user)):
     """
     Get the database schema for a data source (for prompt construction).
     """
@@ -266,21 +267,21 @@ async def get_schema(data_source_id: str):
 
 @router.get("/history", response_model=QueryHistoryResponse)
 async def get_query_history(
-    user_id: str,
     limit: int = 50,
     offset: int = 0,
     data_source_id: Optional[str] = None,
+    current_user=Depends(get_current_user),
 ):
     """
-    Get NL query history for a user.
+    Get NL query history for the current user.
     """
     queries = query_history_store.get_user_history(
-        user_id=user_id,
+        user_id=str(current_user.id),
         limit=limit,
         offset=offset,
         data_source_id=data_source_id,
     )
-    total = len(query_history_store.get_user_history(user_id))
+    total = len(query_history_store.get_user_history(str(current_user.id)))
 
     return QueryHistoryResponse(
         queries=[
@@ -299,7 +300,7 @@ async def get_query_history(
 
 
 @router.get("/history/{query_id}", response_model=NLQueryResponse)
-async def get_query_by_id(query_id: str, user_id: str):
+async def get_query_by_id(query_id: str, current_user=Depends(get_current_user)):
     """
     Get a specific query from history by ID.
     """
@@ -309,7 +310,7 @@ async def get_query_by_id(query_id: str, user_id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Query not found",
         )
-    if entry["user_id"] != user_id:
+    if entry["user_id"] != str(current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
@@ -334,11 +335,11 @@ async def get_query_by_id(query_id: str, user_id: str):
 
 
 @router.delete("/history/{query_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_query(query_id: str, user_id: str):
+async def delete_query(query_id: str, current_user=Depends(get_current_user)):
     """
     Delete a query from history.
     """
-    success = query_history_store.delete_query(query_id, user_id)
+    success = query_history_store.delete_query(query_id, str(current_user.id))
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -347,11 +348,11 @@ async def delete_query(query_id: str, user_id: str):
 
 
 @router.get("/recent", response_model=list[QueryHistoryItem])
-async def get_recent_queries(user_id: str, limit: int = 10):
+async def get_recent_queries(current_user=Depends(get_current_user), limit: int = 10):
     """
     Get recent queries for sidebar display.
     """
-    queries = query_history_store.get_recent_queries(user_id, limit=limit)
+    queries = query_history_store.get_recent_queries(str(current_user.id), limit=limit)
     return [
         QueryHistoryItem(
             id=q["id"],
@@ -366,14 +367,14 @@ async def get_recent_queries(user_id: str, limit: int = 10):
 
 
 @router.post("/confidence", response_model=dict)
-async def get_confidence(request: NLQueryRequest):
+async def get_confidence(request: NLQueryRequest, current_user=Depends(get_current_user)):
     """
     Get confidence score for a NL-to-SQL translation without executing.
     """
     config = _get_datasource_config(request.data_source_id)
     schema_info = _get_schema_info(config)
 
-    translator = NLToSQLTranslator()
+    translator = create_translator_from_env()
     result = translator.translate(
         natural_language_query=request.query,
         schema_info=schema_info,
