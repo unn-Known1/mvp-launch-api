@@ -6,21 +6,19 @@ import os
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone as dt_timezone
-from unittest.mock import patch
-from uuid import uuid4
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import (
+from models import (  # noqa: E402
     ReportTemplate,
     ScheduledReport,
     ReportDelivery,
     User,
     Base,
 )
-from report_router import calculate_next_run, generate_ai_summary_from_results
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from report_router import calculate_next_run, generate_ai_summary_from_results  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 
 class TestReportRouter(unittest.TestCase):
@@ -189,10 +187,6 @@ class TestReportAPI(unittest.TestCase):
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False}
         )
-        # Use String for UUID columns in SQLite for testing
-        from sqlalchemy import Column, String
-        from models import Base as OriginalBase
-        from models import User as OriginalUser
 
         self.db = self.engine.connect()
 

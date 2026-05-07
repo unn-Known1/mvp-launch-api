@@ -9,8 +9,6 @@ from pydantic import BaseModel, Field
 
 from anomaly import (
     detect_anomalies_for_metric,
-    get_anomalies_for_user,
-    scan_all_datasets,
     set_metric_threshold,
     update_anomaly_status,
 )
@@ -193,7 +191,7 @@ def get_notifications(
         AnomalyNotification.user_id == current_user.id
     )
     if unread_only:
-        query = query.filter(AnomalyNotification.read == False)
+        query = query.filter(AnomalyNotification.read.is_(False))
     notifications = query.order_by(AnomalyNotification.created_at.desc()).limit(50).all()
     return [
         NotificationResponse(
@@ -243,7 +241,11 @@ def mark_notification_read(
 
 
 @router.post("/thresholds", response_model=ThresholdResponse, status_code=201)
-def create_or_update_threshold(req: ThresholdRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def create_or_update_threshold(
+    req: ThresholdRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Set anomaly detection sensitivity threshold for a metric."""
     dataset_id = None
     threshold = set_metric_threshold(

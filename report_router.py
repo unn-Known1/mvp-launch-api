@@ -3,8 +3,6 @@ FastAPI router for automated reporting engine with AI summaries.
 """
 
 import csv
-import io
-import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -17,7 +15,6 @@ except ImportError:
     boto3 = None
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 try:
     from weasyprint import HTML
@@ -28,13 +25,9 @@ from models import (
     ReportTemplate,
     ScheduledReport,
     ReportDelivery,
-    Dataset,
-    NLQueryHistory,
-    Anomaly,
-    User,
 )
 from database import get_db
-from nl_to_sql import NLToSQLTranslator, SchemaInfo, ConfidenceLevel
+
 from auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -582,9 +575,9 @@ def generate_report_html(config: dict, user_id: str, db: Session) -> str:
     </style>
 </head>
 <body>"""
-    html += f"<h1>Automated Report</h1>"
+    html += '<h1>Automated Report</h1>'
     html += f"<p>Generated at: {datetime.now(dt_timezone.utc).isoformat()}</p>"
-    
+
     if queries:
         html += "<h2>Query Results</h2>"
         for q in queries:
@@ -610,13 +603,13 @@ def generate_report_html(config: dict, user_id: str, db: Session) -> str:
                         html += "<p>No results found.</p>"
                 except Exception as e:
                     html += f"<p>Error executing query: {str(e)}</p>"
-    
+
     if charts:
         html += "<h2>Charts</h2>"
         for c in charts:
             html += f"<h3>{c.get('title', 'Chart')}</h3>"
             html += "<p>Chart visualization would be rendered here.</p>"
-    
+
     html += "</body></html>"
     return html
 
@@ -661,11 +654,11 @@ async def send_email_ses(
     try:
         aws_region = os.getenv("AWS_REGION", "us-east-1")
         ses_client = boto3.client("ses", region_name=aws_region)
-        
+
         body = {
             "Html": {"Data": html_body, "Charset": "UTF-8"}
         }
-        
+
         response = ses_client.send_email(
             Source=os.getenv("SES_SENDER_EMAIL", "noreply@example.com"),
             Destination={"ToAddresses": recipients},
@@ -681,18 +674,18 @@ async def send_email_ses(
 async def generate_report(report_id: str, delivery_id: str, db: Session):
     """Generate and deliver a scheduled report."""
     import os
-    
+
     report = db.query(ScheduledReport).filter(ScheduledReport.id == report_id).first()
     delivery = db.query(ReportDelivery).filter(ReportDelivery.id == delivery_id).first()
     if not report or not delivery:
         return
-    
+
     try:
         config = report.config
         user_id = report.user_id
         queries = config.get("queries", [])
         all_results = []
-        
+
         # Execute queries and collect results
         for q in queries:
             sql = q.get("sql")
@@ -703,7 +696,7 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
                     all_results.extend(rows)
                 except Exception as e:
                     logger.warning(f"Query execution failed: {e}")
-        
+
         # Generate AI summary
         ai_summary = ""
         if config.get("include_ai_summary", True):
@@ -713,10 +706,10 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
             ai_summary = f"{summary}\n\nKey Insights:\n" + "\n".join(
                 f"- {i}" for i in insights
             )
-        
+
         # Generate HTML report
         html_content = generate_report_html(config, user_id, db)
-        
+
         # Generate PDF
         pdf_url = None
         if config.get("include_pdf", True):
@@ -734,7 +727,7 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
                         pdf_url = f"s3://{s3_bucket}/{s3_key}"
             except Exception as e:
                 logger.error(f"PDF generation failed: {e}")
-        
+
         # Generate CSV exports
         csv_urls = []
         if config.get("include_csv_export", True):
@@ -746,22 +739,22 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
                         csv_urls.append(csv_path)
                     except Exception as e:
                         logger.error(f"CSV generation failed: {e}")
-        
+
         # Update delivery record
         delivery.status = "sent"
         delivery.delivered_at = datetime.now(dt_timezone.utc)
         delivery.pdf_url = pdf_url
         delivery.csv_urls = csv_urls
         delivery.ai_summary = ai_summary
-        
+
         # Update report schedule
         report.last_run_at = datetime.now(dt_timezone.utc)
         report.next_run_at = calculate_next_run(
             report.frequency, report.time_of_day, report.timezone
         )
-        
+
         db.commit()
-        
+
         # Send email
         if report.recipients:
             subject = f"Report: {report.name}"
@@ -770,7 +763,7 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
                 subject=subject,
                 html_body=html_content,
             )
-        
+
     except Exception as e:
         logger.error(f"Report generation failed: {e}")
         delivery.status = "failed"

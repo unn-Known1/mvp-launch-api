@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from connectors import create_connector, data_source_store
 from connectors.base import DataSourceConfig
 from nl_to_sql import (
-    NLToSQLTranslator,
     SchemaInfo,
     ConfidenceLevel,
     NLQueryResult,

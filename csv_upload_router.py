@@ -3,13 +3,12 @@ FastAPI router for CSV file upload and auto-detection pipeline.
 """
 
 import io
-import uuid
 from datetime import datetime
 from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import SessionLocal

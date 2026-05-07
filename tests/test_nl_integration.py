@@ -3,9 +3,9 @@ Integration tests for NL-to-SQL with mocked connectors.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-from nl_to_sql import NLToSQLTranslator, SchemaInfo, ConfidenceLevel
+from nl_to_sql import NLToSQLTranslator, SchemaInfo
 from query_history import InMemoryQueryHistory
 
 

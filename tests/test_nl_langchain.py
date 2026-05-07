@@ -12,7 +12,7 @@ from nl_langchain import (
     JSONOutputParser,
     create_translator_from_env,
 )
-from nl_to_sql import ConfidenceLevel, NLQueryResult, SchemaInfo
+from nl_to_sql import SchemaInfo
 
 
 class TestJSONOutputParser:

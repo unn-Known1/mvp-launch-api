@@ -7,18 +7,15 @@ import os
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
-from datetime import datetime
 
 import pandas as pd
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app
-from csv_upload_router import detect_column_type
-from models import Dataset, DataRecord, ImportBatch, Base, User
-from database import engine
-from auth import get_current_user
+from main import app  # noqa: E402
+from csv_upload_router import detect_column_type  # noqa: E402
+from auth import get_current_user  # noqa: E402
 
 
 class TestColumnTypeDetection(unittest.TestCase):
@@ -56,12 +53,20 @@ class TestCSVUploadEndpoints(unittest.TestCase):
     def setUpClass(cls):
         from collections import namedtuple
         MockUser = namedtuple("MockUser", ["id", "email", "name", "is_active"])
-        cls.mock_user = MockUser(id="test-user-id", email="test@test.com", name="test", is_active=True)
+        cls.mock_user = MockUser(
+            id="test-user-id", email="test@test.com", name="test", is_active=True
+        )
         app.dependency_overrides[get_current_user] = lambda: cls.mock_user
         cls.client = TestClient(app)
 
     def setUp(self):
-        self.test_csv_content = b"name,age,active,joined\nAlice,30,true,2024-01-01\nBob,25,false,2024-02-01\nCharlie,35,true,2024-03-01\n"
+        csv_lines = [
+            "name,age,active,joined",
+            "Alice,30,true,2024-01-01",
+            "Bob,25,false,2024-02-01",
+            "Charlie,35,true,2024-03-01",
+        ]
+        self.test_csv_content = "\n".join(csv_lines).encode()
         self.test_csv_file = io.BytesIO(self.test_csv_content)
 
     def test_detect_csv_types(self):

@@ -49,13 +49,6 @@ class DataSourceStore:
         }
         return config
 
-    def get(self, config_id: str) -> Optional[DataSourceConfig]:
-        """Get a data source configuration by ID."""
-        record = self._store.get(config_id)
-        if not record:
-            return None
-        return self._record_to_config(record)
-
     def list_all(self, user_id: str = "") -> list[DataSourceConfig]:
         """List all data source configurations (without decrypted passwords), scoped to user."""
         records = self._store.values()

@@ -3,9 +3,7 @@ NL Query History Service
 Stores and retrieves NL query history using the database models.
 """
 
-import json
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import create_engine, desc
 from sqlalchemy.orm import sessionmaker, Session

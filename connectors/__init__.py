@@ -2,10 +2,9 @@
 Database connectors package.
 """
 
-from connectors.base import BaseConnector, ConnectionTestResult, DataSourceConfig
+from connectors.base import BaseConnector, DataSourceConfig
 from connectors.mysql import MySQLConnector
 from connectors.postgres import PostgreSQLConnector
-from connectors.store import data_source_store
 
 
 def create_connector(config: DataSourceConfig) -> BaseConnector:

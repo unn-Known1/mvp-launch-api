@@ -8,10 +8,8 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from database import SessionLocal, engine
-from models import Base
 from auth import seed_default_roles
 from auth_router import router as auth_router
 from role_router import router as role_router

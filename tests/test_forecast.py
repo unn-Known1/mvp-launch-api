@@ -46,7 +46,6 @@ class TestGetTimeSeriesData:
             create_mock_record(ds_id, {"sales": 150}, base_time + timedelta(days=1)),
             create_mock_record(ds_id, {"sales": 200}, base_time + timedelta(days=2)),
         ]
-        mock_query = MagicMock()
         mock_session = MagicMock()
         mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = records
 

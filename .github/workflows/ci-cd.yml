@@ -50,16 +50,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run flake8
-        run: flake8 . --exclude=.venv,venv,__pycache__,.pytest_cache --max-line-length=120
+        run: flake8 . --exclude=.venv,venv,__pycache__,.pytest_cache,frontend/node_modules --max-line-length=120
 
       - name: Run mypy
-        run: mypy . --ignore-missing-imports --exclude='(.venv|venv|__pycache__|\.pytest_cache)'
+        run: mypy . --ignore-missing-imports --exclude='(.venv|venv|__pycache__|\.pytest_cache|frontend/node_modules)'
 
       - name: Check formatting with black
-        run: black --check --exclude='(.venv|venv|__pycache__|\.pytest_cache)' .
+        run: black --check --exclude='(.venv|venv|__pycache__|\.pytest_cache|frontend/node_modules)' .
 
       - name: Check import sorting with isort
-        run: isort --check-only --skip=.venv --skip=venv --skip=__pycache__ --skip=.pytest_cache .
+        run: isort --check-only --skip=.venv --skip=venv --skip=__pycache__ --skip=.pytest_cache --skip=frontend/node_modules .
 
   test:
     name: Test
@@ -139,7 +139,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run bandit security linter
-        run: bandit -r . -x .venv,venv,__pycache__,.pytest_cache,tests --severity-level medium
+        run: bandit -r . -x .venv,venv,__pycache__,.pytest_cache,tests,frontend/node_modules --severity-level medium
 
       - name: Run pip-audit for dependency vulnerabilities
         run: pip-audit --desc

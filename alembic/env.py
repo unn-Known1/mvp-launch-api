@@ -11,12 +11,12 @@ from alembic import context
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Import models and Base
-from models import Base
-from models import (
-    User, Role, ApiKey, Dataset, DataRecord, ImportBatch,
-    Forecast, NLQueryHistory, NLPAnalysis, AuditLog,
-    Anomaly, AnomalyThreshold, AnomalyNotification
-)
+from models import Base  # noqa: E402
+# from models import (
+#     User, Role, ApiKey, Dataset, DataRecord, ImportBatch,
+#     Forecast, NLQueryHistory, NLPAnalysis, AuditLog,
+#     Anomaly, AnomalyThreshold, AnomalyNotification
+# )
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

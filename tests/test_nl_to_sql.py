@@ -3,13 +3,11 @@ Tests for NL-to-SQL Translation Engine
 """
 
 import pytest
-from datetime import datetime, timezone
 
 from nl_to_sql import (
     NLToSQLTranslator,
     SchemaInfo,
     ConfidenceLevel,
-    NLQueryResult,
     RephraseSuggestion,
 )
 from query_history import InMemoryQueryHistory
@@ -301,7 +299,7 @@ class TestInMemoryQueryHistory:
         assert recent[0]["query"] == "Q4"
 
     def test_store_with_data_source(self, query_history):
-        entry = query_history.store_query(
+        query_history.store_query(
             user_id="user-1",
             natural_language_query="Query with DS",
             data_source_id="ds-123",

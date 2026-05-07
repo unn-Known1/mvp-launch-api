@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from models import Dataset
 
 from forecast import (
     generate_forecast,
@@ -15,7 +16,7 @@ from forecast import (
     backtest_forecast,
     forecasts_to_csv,
 )
-from models import Forecast, Dataset
+
 from database import get_db
 from sqlalchemy.orm import Session
 from auth import get_current_user
@@ -140,7 +141,7 @@ def get_forecast(forecast_id: str, db: Session = Depends(get_db), current_user=D
     if not forecast_record:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()
+    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()  # noqa: E501
     if not dataset:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -171,7 +172,7 @@ def backtest_forecast_endpoint(
     if not forecast_record:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()
+    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()  # noqa: E501
     if not dataset:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -195,7 +196,7 @@ def download_forecast_csv(forecast_id: str, db: Session = Depends(get_db), curre
     if not forecast_record:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()
+    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()  # noqa: E501
     if not dataset:
         raise HTTPException(status_code=403, detail="Access denied")
 

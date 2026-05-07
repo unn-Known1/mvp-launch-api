@@ -1,8 +1,7 @@
 """Tests for Async ML Workers module."""
 
 from unittest.mock import MagicMock, patch
-import pytest
-from nl_to_sql import NLToSQLTranslator, SchemaInfo
+from nl_to_sql import SchemaInfo
 
 
 class TestForecastTask:

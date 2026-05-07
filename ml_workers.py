@@ -16,10 +16,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from database import SessionLocal
-from models import Forecast, Dataset, DataRecord
+from models import DataRecord
 from forecast import generate_forecast as sync_generate_forecast
 from anomaly import scan_all_datasets as sync_scan_all_datasets
-from nl_to_sql import NLToSQLTranslator, SchemaInfo
+from nl_to_sql import SchemaInfo
 
 logger = logging.getLogger(__name__)
 
@@ -276,9 +276,7 @@ def run_nlp_query_task(
 
 def _get_schema_info_from_config(config) -> SchemaInfo:
     """Extract SchemaInfo from a data source config."""
-    from nl_to_sql import SchemaInfo
     try:
-        from connectors.base import DataSourceConfig
         connector = __import__("connectors", fromlist=["create_connector"]).create_connector(config)
         raw_schema = connector.get_schema_info()
         tables = []
@@ -369,8 +367,8 @@ def enqueue_anomaly_scan(
         logger.warning(f"Redis unavailable for anomaly scan, falling back to sync: {e}")
         if USE_SYNC_FALLBACK:
             _health_state["sync_fallbacks"] += 1
-            result = run_anomaly_scan_task(user_id, dataset_id)
-            return f"sync:anomaly_scan"
+            run_anomaly_scan_task(user_id, dataset_id)
+            return "sync:anomaly_scan"
         logger.error(f"Failed to enqueue anomaly scan and sync fallback disabled: {e}")
         return None
 
@@ -403,7 +401,7 @@ def enqueue_nlp_query(
         if USE_SYNC_FALLBACK:
             _health_state["sync_fallbacks"] += 1
             run_nlp_query_task(natural_language_query, data_source_id, dialect, execute)
-            return f"sync:nlp_query"
+            return "sync:nlp_query"
         logger.error(f"Failed to enqueue NLP query and sync fallback disabled: {e}")
         return None
 

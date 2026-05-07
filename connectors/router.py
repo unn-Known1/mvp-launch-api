@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from connectors import create_connector
 from connectors.base import DataSourceConfig
 from connectors.store import data_source_store
-from auth import get_current_user, require_permissions
+from auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/datasources", tags=["Data Sources"])
 

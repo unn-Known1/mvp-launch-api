@@ -9,7 +9,7 @@ import statistics
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from models import Anomaly, AnomalyThreshold, Dataset, DataRecord
@@ -212,7 +212,7 @@ def detect_anomalies_for_metric(
             is_anomaly = True
             detection_method.append("iqr")
             iqr_range = iqr_upper - iqr_lower if iqr_upper != iqr_lower else 1.0
-            iqr_distance = abs(value - (iqr_lower + iqr_range / 2)) / iqr_range
+            _ = abs(value - (iqr_lower + iqr_range / 2)) / iqr_range
             if severity == "low":
                 if value < iqr_lower * 0.5 or value > iqr_upper * 1.5:
                     severity = "high"

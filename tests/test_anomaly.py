@@ -7,11 +7,10 @@ import sys
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
-from uuid import uuid4
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from anomaly import (
+from anomaly import (  # noqa: E402
     calculate_z_score,
     calculate_iqr_bounds,
     get_threshold_for_metric,
@@ -23,7 +22,7 @@ from anomaly import (
     compute_anomaly_scores,
     compute_model_version,
 )
-from models import (
+from models import (  # noqa: E402
     Anomaly,
     AnomalyThreshold,
     DataRecord,
@@ -31,8 +30,8 @@ from models import (
     User,
     Base,
 )
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 
 class TestAnomalyCalculations(unittest.TestCase):
@@ -365,8 +364,6 @@ class TestThresholdManagement(unittest.TestCase):
 
     def test_scan_all_datasets(self):
         """Test scanning all datasets for anomalies."""
-        from anomaly import create_notifications
-
         for i in range(5):
             record = DataRecord(
                 dataset_id=self.dataset.id,

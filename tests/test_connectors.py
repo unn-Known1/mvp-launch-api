@@ -9,11 +9,11 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from connectors.base import ConnectionTestResult, DataSourceConfig
-from connectors.encryption import decrypt_value, encrypt_value
-from connectors.mysql import MySQLConnector
-from connectors.postgres import PostgreSQLConnector
-from connectors.store import DataSourceStore
+from connectors.base import DataSourceConfig  # noqa: E402
+from connectors.encryption import decrypt_value, encrypt_value  # noqa: E402
+from connectors.mysql import MySQLConnector  # noqa: E402
+from connectors.postgres import PostgreSQLConnector  # noqa: E402
+from connectors.store import DataSourceStore  # noqa: E402
 
 
 class TestEncryption(unittest.TestCase):

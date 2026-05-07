@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ConfidenceLevel(str, Enum):
@@ -107,7 +107,7 @@ IMPORTANT RULES:
     ) -> str:
         """Build the full LLM prompt for NL-to-SQL translation."""
         schema_prompt = self.build_schema_prompt(schema_info)
-        return f"""You are an expert SQL query generator. Convert the user's natural language question into a valid {dialect} SQL query.
+        return f"""You are an expert SQL query generator. Convert the user's natural language question into a valid {dialect} SQL query.  # noqa: E501
 
 {schema_prompt}
 
@@ -285,7 +285,7 @@ Respond in JSON format:
             if "by" in nl or "group" in nl:
                 group_col = self._extract_group_column(nl)
                 if group_col:
-                    return f"SELECT {group_col}, COUNT(*) AS count FROM {table} GROUP BY {group_col} ORDER BY count DESC"
+                    return f"SELECT {group_col}, COUNT(*) AS count FROM {table} GROUP BY {group_col} ORDER BY count DESC"  # noqa: E501
             return f"SELECT COUNT(*) AS count FROM {table}"
 
         if "average" in nl or "avg" in nl:
@@ -317,7 +317,7 @@ Respond in JSON format:
             if group_col:
                 return f"SELECT {group_col}, COUNT(*) AS count FROM {table} GROUP BY {group_col} ORDER BY count DESC"
 
-        return f"SELECT * FROM data LIMIT 100"
+        return "SELECT * FROM data LIMIT 100"
 
     def _extract_table_name(self, nl: str) -> str:
         """Extract table name from NL query."""

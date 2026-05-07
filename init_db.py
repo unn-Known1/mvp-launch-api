@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from models import Base, Role, DEFAULT_ROLES
+from models import Base, Role, DEFAULT_ROLES  # noqa: E402
 
 
 def get_database_url():

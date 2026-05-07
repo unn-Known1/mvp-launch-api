@@ -10,8 +10,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from auth import (
-    SECRET_KEY,
-    ALGORITHM,
     create_access_token,
     create_refresh_token,
     get_db,
