@@ -12,10 +12,9 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from prophet import Prophet
-
-from models import Dataset, DataRecord, Forecast
 from sqlalchemy.orm import Session
 
+from models import DataRecord, Dataset, Forecast
 
 MIN_DATA_POINTS = 30
 
@@ -173,7 +172,10 @@ def calculate_model_metrics(
 
     mask = np.abs(actual_arr) > 1e-10
     if np.any(mask):
-        mape = float(np.mean(np.abs((actual_arr[mask] - predicted_arr[mask]) / actual_arr[mask])) * 100)
+        mape = float(
+            np.mean(np.abs((actual_arr[mask] - predicted_arr[mask]) / actual_arr[mask]))
+            * 100
+        )
     else:
         mape = 0.0
 
@@ -227,11 +229,9 @@ def backtest_forecast(
     future = model.make_future_dataframe(periods=len(test_df), freq="D")
     forecast = model.predict(future)
 
-    test_forecast = forecast.iloc[-len(test_df):]
+    test_forecast = forecast.iloc[-len(test_df) :]
 
-    metrics = calculate_model_metrics(
-        test_df["y"].values, test_forecast["yhat"].values
-    )
+    metrics = calculate_model_metrics(test_df["y"].values, test_forecast["yhat"].values)
     return {
         "train_size": len(train_df),
         "test_size": len(test_df),
@@ -268,7 +268,7 @@ def cross_validate_forecast(
             break
 
         train_df = df.iloc[:cutoff_idx]
-        test_df = df.iloc[cutoff_idx: cutoff_idx + horizon_days]
+        test_df = df.iloc[cutoff_idx : cutoff_idx + horizon_days]
 
         model = Prophet(
             yearly_seasonality=params.get("yearly_seasonality", True),
@@ -282,7 +282,7 @@ def cross_validate_forecast(
 
         future = model.make_future_dataframe(periods=len(test_df), freq="D")
         forecast = model.predict(future)
-        test_forecast = forecast.iloc[-len(test_df):]
+        test_forecast = forecast.iloc[-len(test_df) :]
 
         metrics = calculate_model_metrics(
             test_df["y"].values, test_forecast["yhat"].values
@@ -296,16 +296,12 @@ def cross_validate_forecast(
     avg_metrics = {}
     for key in fold_metrics[0]:
         if isinstance(fold_metrics[0][key], (int, float)):
-            avg_metrics[key] = round(
-                np.mean([m[key] for m in fold_metrics]), 4
-            )
+            avg_metrics[key] = round(np.mean([m[key] for m in fold_metrics]), 4)
 
     std_metrics = {}
     for key in fold_metrics[0]:
         if isinstance(fold_metrics[0][key], (int, float)):
-            std_metrics[f"{key}_std"] = round(
-                np.std([m[key] for m in fold_metrics]), 4
-            )
+            std_metrics[f"{key}_std"] = round(np.std([m[key] for m in fold_metrics]), 4)
 
     return {
         "n_folds_computed": len(fold_metrics),
@@ -395,10 +391,12 @@ def forecasts_to_csv(forecast_record: Forecast) -> str:
     writer = csv.writer(output)
     writer.writerow(["ds", "yhat", "yhat_lower", "yhat_upper"])
     for pred in forecast_record.predictions:
-        writer.writerow([
-            pred["ds"],
-            pred["yhat"],
-            pred["yhat_lower"],
-            pred["yhat_upper"],
-        ])
+        writer.writerow(
+            [
+                pred["ds"],
+                pred["yhat"],
+                pred["yhat_lower"],
+                pred["yhat_upper"],
+            ]
+        )
     return output.getvalue()

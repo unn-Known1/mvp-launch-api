@@ -2,8 +2,9 @@
 Integration tests for NL-to-SQL with mocked connectors.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from nl_to_sql import NLToSQLTranslator, SchemaInfo
 from query_history import InMemoryQueryHistory
@@ -93,7 +94,9 @@ class TestNLToSQLIntegration:
             executed_sql=result.generated_sql,
             results=results,
             confidence_score=result.confidence_score,
-            confidence_level=result.confidence_level.value if result.confidence_level else None,
+            confidence_level=(
+                result.confidence_level.value if result.confidence_level else None
+            ),
             follow_up_questions=result.follow_up_questions,
         )
         assert stored["id"] is not None
@@ -173,7 +176,10 @@ class TestNLToSQLIntegration:
         for nl_query, expected_keyword in queries:
             result = translator.translate(nl_query, schema)
             assert result.generated_sql is not None
-            assert expected_keyword in result.generated_sql or expected_keyword.lower() in result.generated_sql.lower()
+            assert (
+                expected_keyword in result.generated_sql
+                or expected_keyword.lower() in result.generated_sql.lower()
+            )
 
 
 if __name__ == "__main__":

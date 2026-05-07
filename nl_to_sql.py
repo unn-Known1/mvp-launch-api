@@ -20,6 +20,7 @@ class ConfidenceLevel(str, Enum):
 @dataclass
 class SchemaInfo:
     """Database schema information for prompt construction."""
+
     tables: list[dict[str, Any]] = field(default_factory=list)
     relationships: list[dict[str, str]] = field(default_factory=list)
 
@@ -54,6 +55,7 @@ class SchemaInfo:
 @dataclass
 class NLQueryResult:
     """Result of NL-to-SQL translation and execution."""
+
     natural_language_query: str
     generated_sql: str | None = None
     executed_sql: str | None = None
@@ -70,6 +72,7 @@ class NLQueryResult:
 @dataclass
 class RephraseSuggestion:
     """Suggestion for rephrasing a failed query."""
+
     original_query: str
     suggestions: list[str]
     reason: str
@@ -180,7 +183,9 @@ Respond in JSON format:
 {{"suggestions": ["<alternative1>", "<alternative2>", "<alternative3>"], "reason": "<why the original failed>"}}
 """
 
-    def parse_confidence_response(self, response: str) -> tuple[int, ConfidenceLevel, str]:
+    def parse_confidence_response(
+        self, response: str
+    ) -> tuple[int, ConfidenceLevel, str]:
         """Parse LLM confidence response."""
         try:
             data = json.loads(response.strip())
@@ -208,7 +213,9 @@ Respond in JSON format:
         """Parse LLM rephrase suggestions response."""
         try:
             data = json.loads(response.strip())
-            suggestions = [s for s in data.get("suggestions", []) if isinstance(s, str)][:3]
+            suggestions = [
+                s for s in data.get("suggestions", []) if isinstance(s, str)
+            ][:3]
             reason = data.get("reason", "Query could not be processed")
             return RephraseSuggestion(
                 original_query="",
@@ -233,30 +240,46 @@ Respond in JSON format:
         """
         if "confidence" in prompt.lower() or "assess" in prompt.lower():
             if "SELECT" in prompt and "FROM" in prompt:
-                return json.dumps({"score": 85, "level": "HIGH", "reasoning": "SQL correctly answers the question"})
-            return json.dumps({"score": 40, "level": "LOW", "reasoning": "Generated SQL may not match intent"})
+                return json.dumps(
+                    {
+                        "score": 85,
+                        "level": "HIGH",
+                        "reasoning": "SQL correctly answers the question",
+                    }
+                )
+            return json.dumps(
+                {
+                    "score": 40,
+                    "level": "LOW",
+                    "reasoning": "Generated SQL may not match intent",
+                }
+            )
 
         if "follow-up" in prompt.lower() or "followup" in prompt.lower():
-            return json.dumps({
-                "follow_up_questions": [
-                    "What is the trend over the last 6 months?",
-                    "How does this compare to the previous period?",
-                    "Which category has the highest value?",
-                ]
-            })
+            return json.dumps(
+                {
+                    "follow_up_questions": [
+                        "What is the trend over the last 6 months?",
+                        "How does this compare to the previous period?",
+                        "Which category has the highest value?",
+                    ]
+                }
+            )
 
         if "rephrase" in prompt.lower() or "suggestion" in prompt.lower():
-            return json.dumps({
-                "suggestions": [
-                    "Show me the total sales by month for this year",
-                    "What are the sales figures grouped by month in 2024?",
-                    "Display monthly sales totals for the current year",
-                ],
-                "reason": "Original query was too vague or ambiguous"
-            })
+            return json.dumps(
+                {
+                    "suggestions": [
+                        "Show me the total sales by month for this year",
+                        "What are the sales figures grouped by month in 2024?",
+                        "Display monthly sales totals for the current year",
+                    ],
+                    "reason": "Original query was too vague or ambiguous",
+                }
+            )
 
         nl_query = ""
-        if 'User Question:' in prompt:
+        if "User Question:" in prompt:
             match = re.search(r'User Question: "([^"]+)"', prompt)
             if match:
                 nl_query = match.group(1).lower()
@@ -346,22 +369,32 @@ Respond in JSON format:
                 if parts:
                     return parts[0].strip(".,;")
         # Try to find column after "amount", "total", "sum", "average", "avg"
-        for keyword in ["amount", "total", "sum", "average", "avg", "value", "price", "cost", "sales"]:
+        for keyword in [
+            "amount",
+            "total",
+            "sum",
+            "average",
+            "avg",
+            "value",
+            "price",
+            "cost",
+            "sales",
+        ]:
             if keyword in nl:
                 return keyword
         return None
 
     def _extract_limit(self, nl: str) -> int:
         """Extract LIMIT value from NL query."""
-        match = re.search(r'(\d+)\s*(?:rows?|records?|results?)', nl)
+        match = re.search(r"(\d+)\s*(?:rows?|records?|results?)", nl)
         if match:
             return int(match.group(1))
         if "top" in nl:
-            match = re.search(r'top\s+(\d+)', nl)
+            match = re.search(r"top\s+(\d+)", nl)
             if match:
                 return int(match.group(1))
         # Match "List N records" or "Show N items"
-        match = re.search(r'\b(\d+)\b', nl)
+        match = re.search(r"\b(\d+)\b", nl)
         if match:
             return int(match.group(1))
         return 100
@@ -377,6 +410,7 @@ Respond in JSON format:
         Translate natural language to SQL with confidence scoring.
         """
         import time
+
         start_time = time.time()
 
         result = NLQueryResult(
@@ -385,7 +419,9 @@ Respond in JSON format:
         )
 
         try:
-            prompt = self.build_translation_prompt(natural_language_query, schema_info, dialect)
+            prompt = self.build_translation_prompt(
+                natural_language_query, schema_info, dialect
+            )
             sql = self._mock_llm_call(prompt)
             result.generated_sql = sql.strip()
 
@@ -393,7 +429,9 @@ Respond in JSON format:
                 natural_language_query, result.generated_sql, schema_info
             )
             confidence_response = self._mock_llm_call(confidence_prompt)
-            score, level, reasoning = self.parse_confidence_response(confidence_response)
+            score, level, reasoning = self.parse_confidence_response(
+                confidence_response
+            )
             result.confidence_score = score
             result.confidence_level = level
 

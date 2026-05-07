@@ -7,10 +7,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from auth import get_current_user
 from connectors import create_connector
 from connectors.base import DataSourceConfig
 from connectors.store import data_source_store
-from auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/datasources", tags=["Data Sources"])
 
@@ -68,7 +68,9 @@ class ConnectionTestResponse(BaseModel):
 
 
 @router.post("/", response_model=DataSourceResponse, status_code=201)
-def create_data_source(req: CreateDataSourceRequest, current_user=Depends(get_current_user)):
+def create_data_source(
+    req: CreateDataSourceRequest, current_user=Depends(get_current_user)
+):
     """Create a new data source configuration."""
     config = DataSourceConfig(
         name=req.name,
@@ -151,7 +153,9 @@ def get_data_source(config_id: str, current_user=Depends(get_current_user)):
 
 
 @router.patch("/{config_id}", response_model=DataSourceResponse)
-def update_data_source(config_id: str, req: UpdateDataSourceRequest, current_user=Depends(get_current_user)):
+def update_data_source(
+    config_id: str, req: UpdateDataSourceRequest, current_user=Depends(get_current_user)
+):
     """Update a data source configuration."""
     updates = req.model_dump(exclude_unset=True)
     updated = data_source_store.update(config_id, updates, user_id=str(current_user.id))

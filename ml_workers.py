@@ -15,10 +15,10 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from database import SessionLocal
-from models import DataRecord
-from forecast import generate_forecast as sync_generate_forecast
 from anomaly import scan_all_datasets as sync_scan_all_datasets
+from database import SessionLocal
+from forecast import generate_forecast as sync_generate_forecast
+from models import DataRecord
 from nl_to_sql import SchemaInfo
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,12 @@ def _check_redis_available() -> bool:
     """Check if Redis is reachable without raising exceptions."""
     try:
         import redis
-        conn = redis.from_url(REDIS_URL, socket_timeout=REDIS_TIMEOUT, socket_connect_timeout=REDIS_TIMEOUT)
+
+        conn = redis.from_url(
+            REDIS_URL,
+            socket_timeout=REDIS_TIMEOUT,
+            socket_connect_timeout=REDIS_TIMEOUT,
+        )
         conn.ping()
         return True
     except Exception:
@@ -59,6 +64,7 @@ def _check_redis_available() -> bool:
 def get_redis_connection():
     """Get Redis connection with timeout settings."""
     import redis
+
     return redis.from_url(
         REDIS_URL,
         decode_responses=False,
@@ -70,18 +76,21 @@ def get_redis_connection():
 def get_forecast_queue():
     """Get the forecast task queue."""
     from rq import Queue
+
     return Queue(FORECAST_QUEUE, connection=get_redis_connection())
 
 
 def get_anomaly_queue():
     """Get the anomaly detection task queue."""
     from rq import Queue
+
     return Queue(ANOMALY_QUEUE, connection=get_redis_connection())
 
 
 def get_nlp_queue():
     """Get the NLP processing task queue."""
     from rq import Queue
+
     return Queue(NLP_QUEUE, connection=get_redis_connection())
 
 
@@ -97,7 +106,7 @@ def _retry_wrapper(func, *args, max_retries: int = MAX_RETRIES, **kwargs):
         except Exception as e:
             last_exception = e
             if attempt < max_retries:
-                delay = RETRY_DELAY * (2 ** attempt)
+                delay = RETRY_DELAY * (2**attempt)
                 logger.warning(
                     f"Attempt {attempt + 1}/{max_retries + 1} failed: {e}. "
                     f"Retrying in {delay}s..."
@@ -140,7 +149,11 @@ def run_forecast_task(
             "status": forecast_record.status,
             "metrics": forecast_record.model_metrics,
             "predictions_count": len(forecast_record.predictions),
-            "completed_at": forecast_record.completed_at.isoformat() if forecast_record.completed_at else None,
+            "completed_at": (
+                forecast_record.completed_at.isoformat()
+                if forecast_record.completed_at
+                else None
+            ),
         }
         logger.info(f"Forecast task completed: {result['forecast_id']}")
         _health_state["total_tasks"] += 1
@@ -168,8 +181,11 @@ def run_anomaly_scan_task(
     db = SessionLocal()
     try:
         if dataset_id:
-            from anomaly import detect_anomalies_for_metric, extract_numeric_metrics
-            from anomaly import compute_anomaly_scores
+            from anomaly import (
+                compute_anomaly_scores,
+                detect_anomalies_for_metric,
+                extract_numeric_metrics,
+            )
 
             metrics = extract_numeric_metrics(db, dataset_id)
             total = 0
@@ -178,9 +194,12 @@ def run_anomaly_scan_task(
                 anomalies = detect_anomalies_for_metric(db, dataset_id, metric, user_id)
                 total += len(anomalies)
 
-                series_data = db.query(DataRecord).filter(
-                    DataRecord.dataset_id == dataset_id
-                ).order_by(DataRecord.created_at).all()
+                series_data = (
+                    db.query(DataRecord)
+                    .filter(DataRecord.dataset_id == dataset_id)
+                    .order_by(DataRecord.created_at)
+                    .all()
+                )
                 values = []
                 for record in series_data:
                     if isinstance(record.data, dict) and metric in record.data:
@@ -226,9 +245,13 @@ def run_nlp_query_task(
 
         config = data_source_store.get(data_source_id)
         if not config:
-            return {"status": "failed", "error": f"Data source not found: {data_source_id}"}
+            return {
+                "status": "failed",
+                "error": f"Data source not found: {data_source_id}",
+            }
 
         from nl_langchain import create_translator_from_env
+
         translator = create_translator_from_env()
 
         schema_info = _get_schema_info_from_config(config)
@@ -244,7 +267,9 @@ def run_nlp_query_task(
             "natural_language_query": result.natural_language_query,
             "generated_sql": result.generated_sql,
             "confidence_score": result.confidence_score,
-            "confidence_level": result.confidence_level.value if result.confidence_level else None,
+            "confidence_level": (
+                result.confidence_level.value if result.confidence_level else None
+            ),
             "error_message": result.error_message,
         }
 
@@ -264,7 +289,9 @@ def run_nlp_query_task(
             except Exception as e:
                 response["execution_error"] = str(e)
 
-        logger.info(f"NLP query task completed: confidence={response.get('confidence_score')}")
+        logger.info(
+            f"NLP query task completed: confidence={response.get('confidence_score')}"
+        )
         _health_state["total_tasks"] += 1
         return response
     except Exception as e:
@@ -277,7 +304,9 @@ def run_nlp_query_task(
 def _get_schema_info_from_config(config) -> SchemaInfo:
     """Extract SchemaInfo from a data source config."""
     try:
-        connector = __import__("connectors", fromlist=["create_connector"]).create_connector(config)
+        connector = __import__(
+            "connectors", fromlist=["create_connector"]
+        ).create_connector(config)
         raw_schema = connector.get_schema_info()
         tables = []
         relationships = []
@@ -289,11 +318,13 @@ def _get_schema_info_from_config(config) -> SchemaInfo:
         else:
             raw_tables = []
         for t in raw_tables:
-            tables.append({
-                "name": t.get("table") or t.get("name") or t.get("table_name", ""),
-                "columns": t.get("columns", []),
-                "row_count": t.get("row_count"),
-            })
+            tables.append(
+                {
+                    "name": t.get("table") or t.get("name") or t.get("table_name", ""),
+                    "columns": t.get("columns", []),
+                    "row_count": t.get("row_count"),
+                }
+            )
         return SchemaInfo(tables=tables, relationships=relationships)
     except Exception as e:
         logger.warning(f"Failed to get schema: {e}")
@@ -337,7 +368,13 @@ def enqueue_forecast(
         if USE_SYNC_FALLBACK:
             _health_state["sync_fallbacks"] += 1
             result = run_forecast_task(
-                dataset_id, target_column, periods, frequency, model_type, user_id, hyperparams
+                dataset_id,
+                target_column,
+                periods,
+                frequency,
+                model_type,
+                user_id,
+                hyperparams,
             )
             return f"sync:{result.get('forecast_id', 'unknown')}"
         logger.error(f"Failed to enqueue forecast and sync fallback disabled: {e}")
@@ -416,6 +453,7 @@ def get_job_status(job_id: str) -> dict[str, Any] | None:
         }
     try:
         from rq.job import Job
+
         redis_conn = get_redis_connection()
         job = Job.fetch(job_id, connection=redis_conn)
         return {
@@ -466,10 +504,13 @@ def run_worker(queues: list[str] | None = None, burst: bool = False):
         run_worker(queues=["ml-forecast", "ml-anomaly", "ml-nlp"])
     """
     from rq import Queue, Worker
+
     if queues is None:
         queues = [FORECAST_QUEUE, ANOMALY_QUEUE, NLP_QUEUE]
 
-    with Worker([Queue(q, connection=get_redis_connection()) for q in queues]) as workers:
+    with Worker(
+        [Queue(q, connection=get_redis_connection()) for q in queues]
+    ) as workers:
         logger.info(f"Starting ML worker for queues: {queues}")
         if burst:
             Worker.work_burst(workers)
@@ -479,5 +520,6 @@ def run_worker(queues: list[str] | None = None, burst: bool = False):
 
 if __name__ == "__main__":
     import sys
+
     burst_mode = "--burst" in sys.argv
     run_worker(burst=burst_mode)

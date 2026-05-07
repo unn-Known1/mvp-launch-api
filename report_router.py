@@ -5,7 +5,8 @@ FastAPI router for automated reporting engine with AI summaries.
 import csv
 import logging
 import os
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -16,19 +17,15 @@ except ImportError:
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
+
 try:
     from weasyprint import HTML
 except ImportError:
     HTML = None
 
-from models import (
-    ReportTemplate,
-    ScheduledReport,
-    ReportDelivery,
-)
-from database import get_db
-
 from auth import get_current_user
+from database import get_db
+from models import ReportDelivery, ReportTemplate, ScheduledReport
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +150,9 @@ class DeliveryStatusUpdate(BaseModel):
     error_message: Optional[str] = None
 
 
-def calculate_next_run(frequency: str, time_of_day: str, timezone: str = "UTC") -> datetime:
+def calculate_next_run(
+    frequency: str, time_of_day: str, timezone: str = "UTC"
+) -> datetime:
     now = datetime.now(dt_timezone.utc)
     hour, minute = map(int, time_of_day.split(":"))
     next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -217,7 +216,10 @@ async def get_report_template(
 ):
     template = (
         db.query(ReportTemplate)
-        .filter(ReportTemplate.id == template_id, ReportTemplate.user_id == str(current_user.id))
+        .filter(
+            ReportTemplate.id == template_id,
+            ReportTemplate.user_id == str(current_user.id),
+        )
         .first()
     )
     if not template:
@@ -234,7 +236,10 @@ async def update_report_template(
 ):
     template = (
         db.query(ReportTemplate)
-        .filter(ReportTemplate.id == template_id, ReportTemplate.user_id == str(current_user.id))
+        .filter(
+            ReportTemplate.id == template_id,
+            ReportTemplate.user_id == str(current_user.id),
+        )
         .first()
     )
     if not template:
@@ -255,7 +260,10 @@ async def delete_report_template(
 ):
     template = (
         db.query(ReportTemplate)
-        .filter(ReportTemplate.id == template_id, ReportTemplate.user_id == str(current_user.id))
+        .filter(
+            ReportTemplate.id == template_id,
+            ReportTemplate.user_id == str(current_user.id),
+        )
         .first()
     )
     if not template:
@@ -297,7 +305,9 @@ async def list_scheduled_reports(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    query = db.query(ScheduledReport).filter(ScheduledReport.user_id == str(current_user.id))
+    query = db.query(ScheduledReport).filter(
+        ScheduledReport.user_id == str(current_user.id)
+    )
     if is_active is not None:
         query = query.filter(ScheduledReport.is_active == is_active)
     reports = query.order_by(ScheduledReport.next_run_at.asc()).all()
@@ -312,7 +322,10 @@ async def get_scheduled_report(
 ):
     report = (
         db.query(ScheduledReport)
-        .filter(ScheduledReport.id == report_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ScheduledReport.id == report_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not report:
@@ -329,7 +342,10 @@ async def update_scheduled_report(
 ):
     report = (
         db.query(ScheduledReport)
-        .filter(ScheduledReport.id == report_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ScheduledReport.id == report_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not report:
@@ -367,7 +383,10 @@ async def pause_scheduled_report(
 ):
     report = (
         db.query(ScheduledReport)
-        .filter(ScheduledReport.id == report_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ScheduledReport.id == report_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not report:
@@ -385,7 +404,10 @@ async def resume_scheduled_report(
 ):
     report = (
         db.query(ScheduledReport)
-        .filter(ScheduledReport.id == report_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ScheduledReport.id == report_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not report:
@@ -406,7 +428,10 @@ async def delete_scheduled_report(
 ):
     report = (
         db.query(ScheduledReport)
-        .filter(ScheduledReport.id == report_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ScheduledReport.id == report_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not report:
@@ -425,7 +450,10 @@ async def run_scheduled_report(
 ):
     report = (
         db.query(ScheduledReport)
-        .filter(ScheduledReport.id == report_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ScheduledReport.id == report_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not report:
@@ -470,7 +498,10 @@ async def get_report_delivery(
     delivery = (
         db.query(ReportDelivery)
         .join(ScheduledReport)
-        .filter(ReportDelivery.id == delivery_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ReportDelivery.id == delivery_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not delivery:
@@ -488,7 +519,10 @@ async def update_delivery_status(
     delivery = (
         db.query(ReportDelivery)
         .join(ScheduledReport)
-        .filter(ReportDelivery.id == delivery_id, ScheduledReport.user_id == str(current_user.id))
+        .filter(
+            ReportDelivery.id == delivery_id,
+            ScheduledReport.user_id == str(current_user.id),
+        )
         .first()
     )
     if not delivery:
@@ -523,7 +557,9 @@ async def preview_report(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    html_content = generate_report_html(data.config.model_dump(), str(current_user.id), db)
+    html_content = generate_report_html(
+        data.config.model_dump(), str(current_user.id), db
+    )
     if data.preview_type == "html":
         return {"html": html_content}
     return {"detail": "PDF preview not yet implemented, use HTML", "html": html_content}
@@ -575,7 +611,7 @@ def generate_report_html(config: dict, user_id: str, db: Session) -> str:
     </style>
 </head>
 <body>"""
-    html += '<h1>Automated Report</h1>'
+    html += "<h1>Automated Report</h1>"
     html += f"<p>Generated at: {datetime.now(dt_timezone.utc).isoformat()}</p>"
 
     if queries:
@@ -631,7 +667,7 @@ def generate_csv_export(query_results: list[dict], output_path: str) -> str:
     if not query_results:
         return ""
     try:
-        with open(output_path, 'w', newline='') as f:
+        with open(output_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=query_results[0].keys())
             writer.writeheader()
             writer.writerows(query_results)
@@ -655,9 +691,7 @@ async def send_email_ses(
         aws_region = os.getenv("AWS_REGION", "us-east-1")
         ses_client = boto3.client("ses", region_name=aws_region)
 
-        body = {
-            "Html": {"Data": html_body, "Charset": "UTF-8"}
-        }
+        body = {"Html": {"Data": html_body, "Charset": "UTF-8"}}
 
         response = ses_client.send_email(
             Source=os.getenv("SES_SENDER_EMAIL", "noreply@example.com"),

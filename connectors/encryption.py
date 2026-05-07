@@ -4,6 +4,7 @@ Encrypts credentials at rest using Fernet symmetric encryption.
 """
 
 import os
+
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
@@ -16,10 +17,14 @@ def _get_encryption_key() -> bytes:
     if key_env:
         if len(key_env) == 44:
             return key_env.encode()
-        raise ValueError("CREDENTIAL_ENCRYPTION_KEY must be exactly 44 characters (Fernet key)")
+        raise ValueError(
+            "CREDENTIAL_ENCRYPTION_KEY must be exactly 44 characters (Fernet key)"
+        )
 
     # Use PBKDF2 for deterministic key generation in development
-    salt = os.environ.get("CREDENTIAL_ENCRYPTION_SALT", "forge-intelligence-dev-salt").encode()
+    salt = os.environ.get(
+        "CREDENTIAL_ENCRYPTION_SALT", "forge-intelligence-dev-salt"
+    ).encode()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -28,7 +33,9 @@ def _get_encryption_key() -> bytes:
         backend=default_backend(),
     )
     # Derive key from password - use a consistent password for dev
-    password = os.environ.get("CREDENTIAL_KEY_PASSWORD", "development-key-derivation-password").encode()
+    password = os.environ.get(
+        "CREDENTIAL_KEY_PASSWORD", "development-key-derivation-password"
+    ).encode()
     key_material = kdf.derive(password)
     # Convert to Fernet-compatible format (base64-encoded 32-byte key)
     return Fernet.generate_key_from_password(key_material, hashes.SHA256())

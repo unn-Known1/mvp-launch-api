@@ -10,11 +10,11 @@ import os
 from typing import Any, Optional
 
 from nl_to_sql import (
-    NLToSQLTranslator,
-    SchemaInfo,
     ConfidenceLevel,
     NLQueryResult,
+    NLToSQLTranslator,
     RephraseSuggestion,
+    SchemaInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ class LangChainTranslator(NLToSQLTranslator):
                 )
             elif provider == "huggingface":
                 from langchain.llms import HuggingFaceHub
+
                 self.llm = HuggingFaceHub(
                     repo_id=model_name,
                     model_kwargs={"temperature": self.temperature},
@@ -103,6 +104,7 @@ class LangChainTranslator(NLToSQLTranslator):
     ) -> NLQueryResult:
         """Translate natural language to SQL using LangChain LLM."""
         import time
+
         start_time = time.time()
 
         result = NLQueryResult(
@@ -187,9 +189,7 @@ class LangChainTranslator(NLToSQLTranslator):
         error_message: str,
     ) -> RephraseSuggestion:
         """Suggest rephrasing using LangChain LLM."""
-        prompt_text = self.build_rephrase_prompt(
-            natural_language_query, error_message
-        )
+        prompt_text = self.build_rephrase_prompt(natural_language_query, error_message)
 
         llm = self._get_llm()
         if llm is not None:

@@ -7,6 +7,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -14,13 +15,12 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -113,7 +113,9 @@ class DataRecord(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     dataset_id = Column(UUID(as_uuid=True), ForeignKey("datasets.id"), nullable=False)
     data = Column(JSON, nullable=False)
-    import_batch_id = Column(UUID(as_uuid=True), ForeignKey("import_batches.id"), nullable=True)
+    import_batch_id = Column(
+        UUID(as_uuid=True), ForeignKey("import_batches.id"), nullable=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
 
     dataset = relationship("Dataset", back_populates="records")
@@ -279,7 +281,9 @@ class AnomalyThreshold(Base):
 
     __table_args__ = (
         Index("ix_anomaly_thresholds_dataset_id", "dataset_id"),
-        UniqueConstraint("dataset_id", "metric_name", name="uq_anomaly_thresholds_dataset_metric"),
+        UniqueConstraint(
+            "dataset_id", "metric_name", name="uq_anomaly_thresholds_dataset_metric"
+        ),
     )
 
 
@@ -315,9 +319,7 @@ class ReportTemplate(Base):
     user = relationship("User")
     scheduled_reports = relationship("ScheduledReport", back_populates="template")
 
-    __table_args__ = (
-        Index("ix_report_templates_user_id", "user_id"),
-    )
+    __table_args__ = (Index("ix_report_templates_user_id", "user_id"),)
 
 
 class ScheduledReport(Base):
@@ -325,7 +327,9 @@ class ScheduledReport(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    template_id = Column(UUID(as_uuid=True), ForeignKey("report_templates.id"), nullable=True)
+    template_id = Column(
+        UUID(as_uuid=True), ForeignKey("report_templates.id"), nullable=True
+    )
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     frequency = Column(String(20), nullable=False)
@@ -364,7 +368,9 @@ class ReportDelivery(Base):
     __tablename__ = "report_deliveries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
-    scheduled_report_id = Column(UUID(as_uuid=True), ForeignKey("scheduled_reports.id"), nullable=False)
+    scheduled_report_id = Column(
+        UUID(as_uuid=True), ForeignKey("scheduled_reports.id"), nullable=False
+    )
     status = Column(String(20), nullable=False, default="pending")
     delivered_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)

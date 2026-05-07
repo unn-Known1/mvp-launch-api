@@ -47,8 +47,14 @@ class DataSourceConfig:
 
     def to_connection_url(self) -> str:
         """Build SQLAlchemy-compatible connection URL."""
-        scheme = "postgresql+psycopg2" if self.db_type == "postgresql" else "mysql+pymysql"
-        ssl_suffix = "?sslmode=require" if self.ssl_enabled and self.db_type == "postgresql" else ""
+        scheme = (
+            "postgresql+psycopg2" if self.db_type == "postgresql" else "mysql+pymysql"
+        )
+        ssl_suffix = (
+            "?sslmode=require"
+            if self.ssl_enabled and self.db_type == "postgresql"
+            else ""
+        )
         return f"{scheme}://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}{ssl_suffix}"
 
 
@@ -112,7 +118,9 @@ class BaseConnector(ABC):
         pass
 
     @abstractmethod
-    def execute_query(self, query: str, params: Optional[dict] = None) -> list[dict[str, Any]]:
+    def execute_query(
+        self, query: str, params: Optional[dict] = None
+    ) -> list[dict[str, Any]]:
         """Execute a query and return results as list of dicts."""
         pass
 

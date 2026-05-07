@@ -9,17 +9,17 @@ import pandas as pd
 import pytest
 
 from forecast import (
-    generate_forecast,
-    get_forecast_by_id,
-    list_forecasts,
-    get_time_series_data,
+    backtest_forecast,
     calculate_model_metrics,
     compute_model_version,
     cross_validate_forecast,
+    generate_forecast,
+    get_forecast_by_id,
+    get_time_series_data,
+    list_forecasts,
     tune_hyperparameters,
-    backtest_forecast,
 )
-from models import Dataset, DataRecord, Forecast
+from models import DataRecord, Dataset, Forecast
 
 
 def create_mock_dataset(id="ds-1", status="ready"):
@@ -47,7 +47,9 @@ class TestGetTimeSeriesData:
             create_mock_record(ds_id, {"sales": 200}, base_time + timedelta(days=2)),
         ]
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = records
+        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+            records
+        )
 
         df = get_time_series_data(mock_session, ds_id, "sales")
 
@@ -63,7 +65,9 @@ class TestGetTimeSeriesData:
             create_mock_record(ds_id, {"sales": 300}),
         ]
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = records
+        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+            records
+        )
 
         df = get_time_series_data(mock_session, ds_id, "sales")
 
@@ -76,7 +80,9 @@ class TestGetTimeSeriesData:
             create_mock_record(ds_id, {"other_col": 100}),
         ]
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = records
+        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+            records
+        )
 
         df = get_time_series_data(mock_session, ds_id, "sales")
 
@@ -193,21 +199,25 @@ class TestGenerateForecast:
 
         mock_session.query.side_effect = query_side_effect
 
-        mock_get_data.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=30),
-            "y": [100.0 + i for i in range(30)],
-        })
+        mock_get_data.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=30),
+                "y": [100.0 + i for i in range(30)],
+            }
+        )
 
         mock_model = MagicMock()
         mock_prophet.return_value = mock_model
         future_df = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=40)})
         mock_model.make_future_dataframe.return_value = future_df
-        mock_model.predict.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=40),
-            "yhat": [150.0] * 40,
-            "yhat_lower": [140.0] * 40,
-            "yhat_upper": [160.0] * 40,
-        })
+        mock_model.predict.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=40),
+                "yhat": [150.0] * 40,
+                "yhat_lower": [140.0] * 40,
+                "yhat_upper": [160.0] * 40,
+            }
+        )
 
         forecast = generate_forecast(mock_session, ds_id, "sales", 10, "D")
 
@@ -234,21 +244,25 @@ class TestGenerateForecast:
             return MagicMock()
 
         mock_session.query.side_effect = query_side_effect
-        mock_get_data.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=30),
-            "y": [100.0 + i for i in range(30)],
-        })
+        mock_get_data.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=30),
+                "y": [100.0 + i for i in range(30)],
+            }
+        )
 
         mock_model = MagicMock()
         mock_prophet.return_value = mock_model
         future_df = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=40)})
         mock_model.make_future_dataframe.return_value = future_df
-        mock_model.predict.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=40),
-            "yhat": [150.0] * 40,
-            "yhat_lower": [140.0] * 40,
-            "yhat_upper": [160.0] * 40,
-        })
+        mock_model.predict.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=40),
+                "yhat": [150.0] * 40,
+                "yhat_lower": [140.0] * 40,
+                "yhat_upper": [160.0] * 40,
+            }
+        )
 
         hyperparams = {
             "changepoint_prior_scale": 0.1,
@@ -260,12 +274,16 @@ class TestGenerateForecast:
         )
 
         assert forecast.status == "completed"
-        assert forecast.model_metrics["hyperparameters"]["changepoint_prior_scale"] == 0.1
+        assert (
+            forecast.model_metrics["hyperparameters"]["changepoint_prior_scale"] == 0.1
+        )
 
     def test_raises_error_for_insufficient_data(self):
         ds_id = "test-ds-small"
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        mock_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+            []
+        )
 
         with pytest.raises(ValueError, match="Insufficient data"):
             generate_forecast(mock_session, ds_id, "sales", 10)
@@ -275,21 +293,25 @@ class TestBacktestForecast:
     @patch("forecast.Prophet")
     @patch("forecast.get_time_series_data")
     def test_backtest_returns_metrics(self, mock_get_data, mock_prophet):
-        mock_get_data.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=50),
-            "y": [100.0 + i + (i % 7) * 5 for i in range(50)],
-        })
+        mock_get_data.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=50),
+                "y": [100.0 + i + (i % 7) * 5 for i in range(50)],
+            }
+        )
 
         mock_model = MagicMock()
         mock_prophet.return_value = mock_model
         future_df = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=60)})
         mock_model.make_future_dataframe.return_value = future_df
-        mock_model.predict.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=60),
-            "yhat": [150.0] * 60,
-            "yhat_lower": [140.0] * 60,
-            "yhat_upper": [160.0] * 60,
-        })
+        mock_model.predict.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=60),
+                "yhat": [150.0] * 60,
+                "yhat_lower": [140.0] * 60,
+                "yhat_upper": [160.0] * 60,
+            }
+        )
 
         mock_session = MagicMock()
         result = backtest_forecast(mock_session, "ds-1", "sales", test_size=0.2)
@@ -304,21 +326,25 @@ class TestCrossValidateForecast:
     @patch("forecast.Prophet")
     @patch("forecast.get_time_series_data")
     def test_cross_validation_returns_folds(self, mock_get_data, mock_prophet):
-        mock_get_data.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=200),
-            "y": [100.0 + i + (i % 7) * 5 for i in range(200)],
-        })
+        mock_get_data.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=200),
+                "y": [100.0 + i + (i % 7) * 5 for i in range(200)],
+            }
+        )
 
         mock_model = MagicMock()
         mock_prophet.return_value = mock_model
         future_df = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=250)})
         mock_model.make_future_dataframe.return_value = future_df
-        mock_model.predict.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=250),
-            "yhat": [150.0] * 250,
-            "yhat_lower": [140.0] * 250,
-            "yhat_upper": [160.0] * 250,
-        })
+        mock_model.predict.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=250),
+                "yhat": [150.0] * 250,
+                "yhat_lower": [140.0] * 250,
+                "yhat_upper": [160.0] * 250,
+            }
+        )
 
         mock_session = MagicMock()
         result = cross_validate_forecast(
@@ -335,10 +361,12 @@ class TestTuneHyperparameters:
     @patch("forecast.backtest_forecast")
     @patch("forecast.get_time_series_data")
     def test_tuning_returns_best_params(self, mock_get_data, mock_backtest):
-        mock_get_data.return_value = pd.DataFrame({
-            "ds": pd.date_range("2024-01-01", periods=50),
-            "y": [100.0 + i for i in range(50)],
-        })
+        mock_get_data.return_value = pd.DataFrame(
+            {
+                "ds": pd.date_range("2024-01-01", periods=50),
+                "y": [100.0 + i for i in range(50)],
+            }
+        )
 
         mock_backtest.return_value = {
             "train_size": 40,
@@ -348,14 +376,16 @@ class TestTuneHyperparameters:
 
         mock_session = MagicMock()
         result = tune_hyperparameters(
-            mock_session, "ds-1", "sales",
+            mock_session,
+            "ds-1",
+            "sales",
             param_grid={
                 "changepoint_prior_scale": [0.01, 0.05],
                 "seasonality_prior_scale": [1.0, 10.0],
                 "yearly_seasonality": [True],
                 "weekly_seasonality": [True],
                 "daily_seasonality": [False],
-            }
+            },
         )
 
         assert "best_params" in result
@@ -367,10 +397,13 @@ class TestTuneHyperparameters:
 class TestGetForecastById:
     def test_returns_forecast_when_found(self):
         from uuid import uuid4
+
         forecast = MagicMock(spec=Forecast)
         forecast.id = uuid4()
         mock_session = MagicMock()
-        mock_session.query.return_value.filter.return_value.first.return_value = forecast
+        mock_session.query.return_value.filter.return_value.first.return_value = (
+            forecast
+        )
 
         result = get_forecast_by_id(mock_session, str(forecast.id))
 

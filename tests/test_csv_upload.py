@@ -13,9 +13,9 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app  # noqa: E402
-from csv_upload_router import detect_column_type  # noqa: E402
 from auth import get_current_user  # noqa: E402
+from csv_upload_router import detect_column_type  # noqa: E402
+from main import app  # noqa: E402
 
 
 class TestColumnTypeDetection(unittest.TestCase):
@@ -52,6 +52,7 @@ class TestCSVUploadEndpoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from collections import namedtuple
+
         MockUser = namedtuple("MockUser", ["id", "email", "name", "is_active"])
         cls.mock_user = MockUser(
             id="test-user-id", email="test@test.com", name="test", is_active=True

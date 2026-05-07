@@ -41,7 +41,9 @@ class MySQLConnector(BaseConnector):
                 message=f"Connection failed: {str(e)}",
             )
 
-    def execute_query(self, query: str, params: Optional[dict] = None) -> list[dict[str, Any]]:
+    def execute_query(
+        self, query: str, params: Optional[dict] = None
+    ) -> list[dict[str, Any]]:
         """Execute a query and return results as list of dicts."""
         with self.get_connection() as conn:
             result = conn.execute(text(query), params or {})

@@ -10,28 +10,29 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from anomaly import calculate_z_score  # noqa: E402
 from anomaly import (  # noqa: E402
-    calculate_z_score,
     calculate_iqr_bounds,
-    get_threshold_for_metric,
-    update_anomaly_status,
-    detect_anomalies_for_metric,
-    extract_numeric_metrics,
-    set_metric_threshold,
-    scan_all_datasets,
     compute_anomaly_scores,
     compute_model_version,
+    detect_anomalies_for_metric,
+    extract_numeric_metrics,
+    get_threshold_for_metric,
+    scan_all_datasets,
+    set_metric_threshold,
+    update_anomaly_status,
 )
+from models import DataRecord  # noqa: E402
 from models import (  # noqa: E402
     Anomaly,
     AnomalyThreshold,
-    DataRecord,
+    Base,
     Dataset,
     User,
-    Base,
 )
-from sqlalchemy import create_engine  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 
 class TestAnomalyCalculations(unittest.TestCase):
@@ -101,9 +102,17 @@ class TestAnomalyScores(unittest.TestCase):
         values = [1.0, 2.0, 3.0, 4.0, 5.0, 100.0]
         result = compute_anomaly_scores(values)
         expected_keys = [
-            "num_points", "anomaly_count", "anomaly_rate", "mean",
-            "std_dev", "skewness", "kurtosis", "max_z_score",
-            "iqr_lower", "iqr_upper", "detection_summary",
+            "num_points",
+            "anomaly_count",
+            "anomaly_rate",
+            "mean",
+            "std_dev",
+            "skewness",
+            "kurtosis",
+            "max_z_score",
+            "iqr_lower",
+            "iqr_upper",
+            "detection_summary",
         ]
         for key in expected_keys:
             self.assertIn(key, result)
@@ -113,18 +122,30 @@ class TestModelVersioning(unittest.TestCase):
     """Test model version generation."""
 
     def test_model_version_deterministic(self):
-        v1 = compute_model_version(z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123")
-        v2 = compute_model_version(z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123")
+        v1 = compute_model_version(
+            z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123"
+        )
+        v2 = compute_model_version(
+            z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123"
+        )
         self.assertEqual(v1, v2)
 
     def test_model_version_differs_by_params(self):
-        v1 = compute_model_version(z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123")
-        v2 = compute_model_version(z_threshold=2.0, iqr_multiplier=3.0, data_hash="abc123")
+        v1 = compute_model_version(
+            z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123"
+        )
+        v2 = compute_model_version(
+            z_threshold=2.0, iqr_multiplier=3.0, data_hash="abc123"
+        )
         self.assertNotEqual(v1, v2)
 
     def test_model_version_differs_by_data(self):
-        v1 = compute_model_version(z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123")
-        v2 = compute_model_version(z_threshold=3.0, iqr_multiplier=3.0, data_hash="def456")
+        v1 = compute_model_version(
+            z_threshold=3.0, iqr_multiplier=3.0, data_hash="abc123"
+        )
+        v2 = compute_model_version(
+            z_threshold=3.0, iqr_multiplier=3.0, data_hash="def456"
+        )
         self.assertNotEqual(v1, v2)
 
 
@@ -251,13 +272,11 @@ class TestAnomalyDetection(unittest.TestCase):
             (datetime(2024, 1, 6), 100.0),
         ]
 
-        anomalies = detect_anomalies_for_metric(
-            self.db, self.dataset.id, "temperature"
-        )
+        anomalies = detect_anomalies_for_metric(self.db, self.dataset.id, "temperature")
         self.assertGreater(len(anomalies), 0)
         self.assertTrue(
-            "z_score" in anomalies[0].detection_method or
-            "iqr" in anomalies[0].detection_method
+            "z_score" in anomalies[0].detection_method
+            or "iqr" in anomalies[0].detection_method
         )
 
     @patch("anomaly.get_time_series_for_metric")
@@ -267,9 +286,7 @@ class TestAnomalyDetection(unittest.TestCase):
         ]
         mock_get_series.return_value.append((datetime(2024, 1, 8), 200.0))
 
-        anomalies = detect_anomalies_for_metric(
-            self.db, self.dataset.id, "value"
-        )
+        anomalies = detect_anomalies_for_metric(self.db, self.dataset.id, "value")
         self.assertGreater(len(anomalies), 0)
         self.assertIsNotNone(anomalies[0].model_version)
         self.assertIsInstance(anomalies[0].model_version, str)
@@ -282,9 +299,7 @@ class TestAnomalyDetection(unittest.TestCase):
         ]
         mock_get_series.return_value.append((datetime(2024, 1, 8), 200.0))
 
-        anomalies = detect_anomalies_for_metric(
-            self.db, self.dataset.id, "value"
-        )
+        anomalies = detect_anomalies_for_metric(self.db, self.dataset.id, "value")
         self.assertGreater(len(anomalies), 0)
         self.assertIsInstance(anomalies[0].confidence, float)
         self.assertGreaterEqual(anomalies[0].confidence, 0.0)
@@ -293,13 +308,10 @@ class TestAnomalyDetection(unittest.TestCase):
     @patch("anomaly.get_time_series_for_metric")
     def test_no_anomaly_for_normal_data(self, mock_get_series):
         mock_get_series.return_value = [
-            (datetime(2024, 1, i), float(20 + i))
-            for i in range(1, 10)
+            (datetime(2024, 1, i), float(20 + i)) for i in range(1, 10)
         ]
 
-        anomalies = detect_anomalies_for_metric(
-            self.db, self.dataset.id, "temperature"
-        )
+        anomalies = detect_anomalies_for_metric(self.db, self.dataset.id, "temperature")
         self.assertEqual(len(anomalies), 0)
 
     def test_extract_numeric_metrics(self):
@@ -354,9 +366,7 @@ class TestThresholdManagement(unittest.TestCase):
         self.assertEqual(result.z_score_threshold, 2)
 
     def test_set_metric_threshold_update(self):
-        set_metric_threshold(
-            self.db, self.dataset.id, "cpu_usage", z_score_threshold=2
-        )
+        set_metric_threshold(self.db, self.dataset.id, "cpu_usage", z_score_threshold=2)
         result = set_metric_threshold(
             self.db, self.dataset.id, "cpu_usage", z_score_threshold=4
         )

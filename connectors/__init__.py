@@ -15,5 +15,7 @@ def create_connector(config: DataSourceConfig) -> BaseConnector:
     }
     connector_class = connectors.get(config.db_type.lower())
     if not connector_class:
-        raise ValueError(f"Unsupported database type: {config.db_type}. Supported: {list(connectors.keys())}")
+        raise ValueError(
+            f"Unsupported database type: {config.db_type}. Supported: {list(connectors.keys())}"
+        )
     return connector_class(config)

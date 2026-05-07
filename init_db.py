@@ -2,6 +2,7 @@
 Database initialization script.
 Runs migrations and seeds default data.
 """
+
 import os
 import sys
 
@@ -10,13 +11,12 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from models import Base, Role, DEFAULT_ROLES  # noqa: E402
+from models import DEFAULT_ROLES, Base, Role  # noqa: E402
 
 
 def get_database_url():
     return os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres:postgres@localhost:5432/app_db"
+        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/app_db"
     )
 
 
@@ -42,7 +42,7 @@ def init_db():
             role = Role(
                 name=role_name,
                 description=role_data["description"],
-                permissions=role_data["permissions"]
+                permissions=role_data["permissions"],
             )
             session.add(role)
 

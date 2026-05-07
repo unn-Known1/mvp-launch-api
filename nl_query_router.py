@@ -9,21 +9,18 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from auth import get_current_user
 from connectors import create_connector, data_source_store
 from connectors.base import DataSourceConfig
-from nl_to_sql import (
-    SchemaInfo,
-    ConfidenceLevel,
-    NLQueryResult,
-)
 from nl_langchain import create_translator_from_env
+from nl_to_sql import ConfidenceLevel, NLQueryResult, SchemaInfo
 from query_history import query_history_store
-from auth import get_current_user
 
 router = APIRouter(prefix="/nl-query", tags=["NL Query"])
 
 
 # --- Request/Response Models ---
+
 
 class NLQueryRequest(BaseModel):
     query: str
@@ -80,6 +77,7 @@ class QueryHistoryResponse(BaseModel):
 
 # --- Helpers ---
 
+
 def _get_datasource_config(data_source_id: str) -> DataSourceConfig:
     """Retrieve and validate data source configuration."""
     config = data_source_store.get(data_source_id)
@@ -115,11 +113,13 @@ def _get_schema_info(config: DataSourceConfig) -> SchemaInfo:
         # Convert connector format to SchemaInfo format
         for t in raw_tables:
             table_name = t.get("table") or t.get("name") or t.get("table_name", "")
-            tables.append({
-                "name": table_name,
-                "columns": t.get("columns", []),
-                "row_count": t.get("row_count"),
-            })
+            tables.append(
+                {
+                    "name": table_name,
+                    "columns": t.get("columns", []),
+                    "row_count": t.get("row_count"),
+                }
+            )
 
         return SchemaInfo(tables=tables, relationships=relationships)
     except Exception as e:
@@ -150,7 +150,9 @@ def _nl_result_to_response(
         results=result.results,
         row_count=result.row_count,
         confidence_score=result.confidence_score,
-        confidence_level=result.confidence_level.value if result.confidence_level else None,
+        confidence_level=(
+            result.confidence_level.value if result.confidence_level else None
+        ),
         confidence_indicator=confidence_indicator,
         follow_up_questions=result.follow_up_questions,
         error_message=result.error_message,
@@ -162,8 +164,11 @@ def _nl_result_to_response(
 
 # --- Endpoints ---
 
+
 @router.post("/translate", response_model=NLQueryResponse)
-async def translate_query(request: NLQueryRequest, current_user=Depends(get_current_user)):
+async def translate_query(
+    request: NLQueryRequest, current_user=Depends(get_current_user)
+):
     """
     Translate a natural language query to SQL with confidence scoring.
     Optionally executes the query if execute=True.
@@ -218,7 +223,9 @@ async def translate_query(request: NLQueryRequest, current_user=Depends(get_curr
         executed_sql=executed_sql,
         results=query_results,
         confidence_score=result.confidence_score,
-        confidence_level=result.confidence_level.value if result.confidence_level else None,
+        confidence_level=(
+            result.confidence_level.value if result.confidence_level else None
+        ),
         follow_up_questions=result.follow_up_questions,
         execution_time_ms=result.execution_time_ms,
         row_count=row_count,
@@ -233,7 +240,9 @@ async def translate_query(request: NLQueryRequest, current_user=Depends(get_curr
 
 
 @router.post("/suggest-rephrase", response_model=RephraseResponse)
-async def suggest_rephrase(request: RephraseRequest, current_user=Depends(get_current_user)):
+async def suggest_rephrase(
+    request: RephraseRequest, current_user=Depends(get_current_user)
+):
     """
     Suggest rephrasing for a failed or ambiguous query.
     """
@@ -366,7 +375,9 @@ async def get_recent_queries(current_user=Depends(get_current_user), limit: int 
 
 
 @router.post("/confidence", response_model=dict)
-async def get_confidence(request: NLQueryRequest, current_user=Depends(get_current_user)):
+async def get_confidence(
+    request: NLQueryRequest, current_user=Depends(get_current_user)
+):
     """
     Get confidence score for a NL-to-SQL translation without executing.
     """
@@ -385,6 +396,10 @@ async def get_confidence(request: NLQueryRequest, current_user=Depends(get_curre
         "query": request.query,
         "generated_sql": result.generated_sql,
         "confidence_score": result.confidence_score,
-        "confidence_level": result.confidence_level.value if result.confidence_level else None,
-        "confidence_indicator": result.confidence_level.value if result.confidence_level else None,
+        "confidence_level": (
+            result.confidence_level.value if result.confidence_level else None
+        ),
+        "confidence_indicator": (
+            result.confidence_level.value if result.confidence_level else None
+        ),
     }

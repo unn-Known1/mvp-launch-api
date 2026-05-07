@@ -12,7 +12,7 @@ from typing import Any, Optional
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from models import Anomaly, AnomalyThreshold, Dataset, DataRecord
+from models import Anomaly, AnomalyThreshold, DataRecord, Dataset
 
 
 def calculate_z_score(value: float, mean: float, std_dev: float) -> float:
@@ -183,7 +183,9 @@ def detect_anomalies_for_metric(
     model_version = compute_model_version(
         z_threshold=z_threshold,
         iqr_multiplier=iqr_multiplier,
-        data_hash=hashlib.md5(json.dumps(sorted(values), default=str).encode()).hexdigest()[:8],
+        data_hash=hashlib.md5(
+            json.dumps(sorted(values), default=str).encode()
+        ).hexdigest()[:8],
     )
 
     anomalies = []
@@ -263,9 +265,7 @@ def scan_all_datasets(db: Session, user_id: Optional[str] = None) -> dict[str, i
         metric_names = extract_numeric_metrics(db, dataset.id)
         count = 0
         for metric in metric_names:
-            anomalies = detect_anomalies_for_metric(
-                db, dataset.id, metric, user_id
-            )
+            anomalies = detect_anomalies_for_metric(db, dataset.id, metric, user_id)
             count += len(anomalies)
             if anomalies and user_id:
                 create_notifications(db, user_id, anomalies)
@@ -276,10 +276,7 @@ def scan_all_datasets(db: Session, user_id: Optional[str] = None) -> dict[str, i
 
 def extract_numeric_metrics(db: Session, dataset_id: str) -> list[str]:
     sample = (
-        db.query(DataRecord)
-        .filter(DataRecord.dataset_id == dataset_id)
-        .limit(10)
-        .all()
+        db.query(DataRecord).filter(DataRecord.dataset_id == dataset_id).limit(10).all()
     )
     metrics = set()
     for record in sample:
@@ -293,11 +290,10 @@ def extract_numeric_metrics(db: Session, dataset_id: str) -> list[str]:
     return list(metrics)
 
 
-def create_notifications(
-    db: Session, user_id: str, anomalies: list[Anomaly]
-) -> None:
-    from models import AnomalyNotification
+def create_notifications(db: Session, user_id: str, anomalies: list[Anomaly]) -> None:
     from uuid import UUID
+
+    from models import AnomalyNotification
 
     try:
         user_uuid = UUID(user_id)
@@ -305,9 +301,7 @@ def create_notifications(
         return
 
     for anomaly in anomalies:
-        notification = AnomalyNotification(
-            user_id=user_uuid, anomaly_id=anomaly.id
-        )
+        notification = AnomalyNotification(user_id=user_uuid, anomaly_id=anomaly.id)
         db.add(notification)
     db.commit()
 
@@ -328,6 +322,7 @@ def update_anomaly_status(
     notes: Optional[str] = None,
 ) -> Optional[Anomaly]:
     from uuid import UUID
+
     try:
         anomaly_uuid = UUID(anomaly_id)
     except (ValueError, AttributeError):

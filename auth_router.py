@@ -13,15 +13,15 @@ from auth import (
     blacklist_token,
     create_access_token,
     create_refresh_token,
-    get_db,
+    decode_token,
     get_current_user,
+    get_db,
     hash_password,
     require_permissions,
     seed_default_roles,
     verify_password,
-    decode_token,
 )
-from models import User, Role
+from models import Role, User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -93,7 +93,7 @@ def logout(
 ):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        token_str = auth_header[len("Bearer "):]
+        token_str = auth_header[len("Bearer ") :]
         try:
             payload = decode_token(token_str)
             token_jti = payload.get("jti")

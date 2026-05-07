@@ -7,18 +7,19 @@ from datetime import datetime
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import SessionLocal
-from models import Dataset, DataRecord, ImportBatch
 from auth import get_current_user
+from database import SessionLocal
+from models import DataRecord, Dataset, ImportBatch
 
 router = APIRouter(prefix="/api/v1/csv", tags=["CSV Upload"])
 
 
 # --- Response Models ---
+
 
 class ColumnTypeInfo(BaseModel):
     name: str
@@ -64,6 +65,7 @@ class CSVUploadResponse(BaseModel):
 
 # --- Dependency ---
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -73,6 +75,7 @@ def get_db():
 
 
 # --- Type Detection Helpers ---
+
 
 def detect_column_type(series: pd.Series) -> str:
     """Auto-detect column type based on pandas dtype and value analysis."""
@@ -126,8 +129,11 @@ def analyze_csv_types(df: pd.DataFrame) -> list[ColumnTypeInfo]:
 
 # --- Endpoints ---
 
+
 @router.post("/detect", response_model=CSVDetectionResponse)
-async def detect_csv_types(file: UploadFile = File(...), current_user=Depends(get_current_user)):
+async def detect_csv_types(
+    file: UploadFile = File(...), current_user=Depends(get_current_user)
+):
     """Upload a CSV file and auto-detect column types without storing."""
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
@@ -177,11 +183,7 @@ async def upload_csv(
 
     name = dataset_name or file.filename
     columns = analyze_csv_types(df)
-    schema = {
-        "columns": [
-            {"name": c.name, "type": c.inferred_type} for c in columns
-        ]
-    }
+    schema = {"columns": [{"name": c.name, "type": c.inferred_type} for c in columns]}
 
     dataset = Dataset(
         name=name,
@@ -264,9 +266,15 @@ async def upload_csv(
 
 
 @router.get("/datasets", response_model=list[DatasetResponse])
-def list_csv_datasets(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def list_csv_datasets(
+    db: Session = Depends(get_db), current_user=Depends(get_current_user)
+):
     """List all CSV-imported datasets for the current user."""
-    datasets = db.query(Dataset).filter(Dataset.schema.isnot(None), Dataset.user_id == current_user.id).all()
+    datasets = (
+        db.query(Dataset)
+        .filter(Dataset.schema.isnot(None), Dataset.user_id == current_user.id)
+        .all()
+    )
     return [
         DatasetResponse(
             id=str(d.id),

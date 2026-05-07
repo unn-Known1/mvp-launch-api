@@ -4,16 +4,11 @@ Tests for NL-to-SQL Translation Engine
 
 import pytest
 
-from nl_to_sql import (
-    NLToSQLTranslator,
-    SchemaInfo,
-    ConfidenceLevel,
-    RephraseSuggestion,
-)
+from nl_to_sql import ConfidenceLevel, NLToSQLTranslator, RephraseSuggestion, SchemaInfo
 from query_history import InMemoryQueryHistory
 
-
 # --- Fixtures ---
+
 
 @pytest.fixture
 def schema_info():
@@ -40,7 +35,12 @@ def schema_info():
             },
         ],
         relationships=[
-            {"from_table": "sales", "from_column": "user_id", "to_table": "users", "to_column": "id"},
+            {
+                "from_table": "sales",
+                "from_column": "user_id",
+                "to_table": "users",
+                "to_column": "id",
+            },
         ],
     )
 
@@ -56,6 +56,7 @@ def query_history():
 
 
 # --- SchemaInfo Tests ---
+
 
 class TestSchemaInfo:
     def test_to_prompt_text(self, schema_info):
@@ -73,6 +74,7 @@ class TestSchemaInfo:
 
 
 # --- NLToSQLTranslator Tests ---
+
 
 class TestNLToSQLTranslator:
     def test_translate_basic_query(self, translator, schema_info):
@@ -100,7 +102,10 @@ class TestNLToSQLTranslator:
             schema_info,
         )
         assert result.generated_sql is not None
-        assert "GROUP BY" in result.generated_sql or "group by" in result.generated_sql.lower()
+        assert (
+            "GROUP BY" in result.generated_sql
+            or "group by" in result.generated_sql.lower()
+        )
 
     def test_translate_average(self, translator, schema_info):
         result = translator.translate(
@@ -164,13 +169,16 @@ class TestNLToSQLTranslator:
         assert len(translator.get_query_history()) == initial_count + 1
 
     def test_translate_different_dialects(self, translator, schema_info):
-        result_pg = translator.translate("Show sales", schema_info, dialect="postgresql")
+        result_pg = translator.translate(
+            "Show sales", schema_info, dialect="postgresql"
+        )
         result_mysql = translator.translate("Show sales", schema_info, dialect="mysql")
         assert result_pg.generated_sql is not None
         assert result_mysql.generated_sql is not None
 
 
 # --- Follow-up Questions Tests ---
+
 
 class TestFollowUpQuestions:
     def test_generate_followup(self, translator):
@@ -193,6 +201,7 @@ class TestFollowUpQuestions:
 
 
 # --- Rephrase Suggestion Tests ---
+
 
 class TestRephraseSuggestion:
     def test_suggest_rephrase(self, translator):
@@ -217,6 +226,7 @@ class TestRephraseSuggestion:
 
 
 # --- Confidence Parsing Tests ---
+
 
 class TestConfidenceParsing:
     def test_parse_valid_confidence(self, translator):
@@ -246,6 +256,7 @@ class TestConfidenceParsing:
 
 # --- Query History Service Tests ---
 
+
 class TestInMemoryQueryHistory:
     def test_store_query(self, query_history):
         entry = query_history.store_query(
@@ -270,24 +281,32 @@ class TestInMemoryQueryHistory:
 
     def test_get_user_history_with_limit(self, query_history):
         for i in range(10):
-            query_history.store_query(user_id="user-1", natural_language_query=f"Query {i}")
+            query_history.store_query(
+                user_id="user-1", natural_language_query=f"Query {i}"
+            )
         history = query_history.get_user_history(user_id="user-1", limit=5)
         assert len(history) == 5
 
     def test_get_by_id(self, query_history):
-        entry = query_history.store_query(user_id="user-1", natural_language_query="Find me")
+        entry = query_history.store_query(
+            user_id="user-1", natural_language_query="Find me"
+        )
         retrieved = query_history.get_by_id(entry["id"])
         assert retrieved is not None
         assert retrieved["natural_language_query"] == "Find me"
 
     def test_delete_query(self, query_history):
-        entry = query_history.store_query(user_id="user-1", natural_language_query="To delete")
+        entry = query_history.store_query(
+            user_id="user-1", natural_language_query="To delete"
+        )
         result = query_history.delete_query(entry["id"], user_id="user-1")
         assert result is True
         assert query_history.get_by_id(entry["id"]) is None
 
     def test_delete_other_user_query(self, query_history):
-        entry = query_history.store_query(user_id="user-1", natural_language_query="Protected")
+        entry = query_history.store_query(
+            user_id="user-1", natural_language_query="Protected"
+        )
         result = query_history.delete_query(entry["id"], user_id="user-2")
         assert result is False
 
@@ -304,11 +323,14 @@ class TestInMemoryQueryHistory:
             natural_language_query="Query with DS",
             data_source_id="ds-123",
         )
-        history = query_history.get_user_history(user_id="user-1", data_source_id="ds-123")
+        history = query_history.get_user_history(
+            user_id="user-1", data_source_id="ds-123"
+        )
         assert len(history) == 1
 
 
 # --- Integration Tests ---
+
 
 class TestIntegration:
     def test_full_translation_flow(self, translator, schema_info):

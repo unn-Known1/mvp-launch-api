@@ -1,6 +1,7 @@
 """Tests for Async ML Workers module."""
 
 from unittest.mock import MagicMock, patch
+
 from nl_to_sql import SchemaInfo
 
 
@@ -12,6 +13,7 @@ class TestForecastTask:
         mock_session_local.return_value = mock_db
 
         from datetime import datetime, timezone
+
         mock_forecast = MagicMock()
         mock_forecast.id = "test-forecast-id"
         mock_forecast.status = "completed"
@@ -21,6 +23,7 @@ class TestForecastTask:
         mock_generate.return_value = mock_forecast
 
         from ml_workers import run_forecast_task
+
         result = run_forecast_task(
             dataset_id="ds-1",
             target_column="sales",
@@ -40,6 +43,7 @@ class TestForecastTask:
         mock_generate.side_effect = Exception("Forecast failed")
 
         from ml_workers import run_forecast_task
+
         result = run_forecast_task(
             dataset_id="ds-1",
             target_column="sales",
@@ -59,6 +63,7 @@ class TestAnomalyScanTask:
         mock_scan.return_value = {"ds-1": 3, "ds-2": 1}
 
         from ml_workers import run_anomaly_scan_task
+
         result = run_anomaly_scan_task(user_id="user-1")
 
         assert "datasets_scanned" in result
@@ -72,6 +77,7 @@ class TestAnomalyScanTask:
         mock_scan.return_value = {"ds-1": 4}
 
         from ml_workers import run_anomaly_scan_task
+
         result = run_anomaly_scan_task(user_id="user-1", dataset_id="ds-1")
 
         assert result["dataset_id"] == "ds-1"
@@ -98,6 +104,7 @@ class TestNLPQueryTask:
         mock_translator.return_value = mock_t
 
         from ml_workers import run_nlp_query_task
+
         result = run_nlp_query_task(
             natural_language_query="Show data",
             data_source_id="ds-1",
@@ -111,7 +118,9 @@ class TestNLPQueryTask:
     @patch("connectors.data_source_store")
     @patch("nl_langchain.create_translator_from_env")
     @patch("ml_workers._get_schema_info_from_config")
-    def test_run_nlp_query_with_execute(self, mock_schema, mock_translator, mock_store, mock_connector):
+    def test_run_nlp_query_with_execute(
+        self, mock_schema, mock_translator, mock_store, mock_connector
+    ):
         mock_config = MagicMock()
         mock_store.get.return_value = mock_config
         mock_schema.return_value = SchemaInfo(tables=[])
@@ -131,6 +140,7 @@ class TestNLPQueryTask:
         mock_connector.return_value = mock_connector_inst
 
         from ml_workers import run_nlp_query_task
+
         result = run_nlp_query_task(
             natural_language_query="Show data",
             data_source_id="ds-1",
@@ -148,6 +158,7 @@ class TestQueueFunctions:
         mock_redis.return_value = mock_conn
 
         from ml_workers import get_forecast_queue
+
         queue = get_forecast_queue()
         assert queue is not None
 
@@ -161,6 +172,7 @@ class TestQueueFunctions:
         mock_queue.return_value = mock_q
 
         from ml_workers import enqueue_forecast
+
         job_id = enqueue_forecast("ds-1", "sales", 10)
         assert job_id == "job-123"
 
@@ -171,6 +183,7 @@ class TestWorkerHealth:
         mock_redis_check.return_value = True
 
         from ml_workers import get_worker_health
+
         health = get_worker_health()
 
         assert "redis_available" in health
@@ -226,6 +239,7 @@ class TestSyncFallback:
         mock_redis.side_effect = ConnectionError("Redis unavailable")
 
         from ml_workers import enqueue_forecast
+
         mock_run_task.return_value = {
             "forecast_id": "sync-123",
             "status": "completed",

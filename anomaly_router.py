@@ -6,16 +6,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from anomaly import (
     detect_anomalies_for_metric,
     set_metric_threshold,
     update_anomaly_status,
 )
-from models import Anomaly, AnomalyThreshold, AnomalyNotification, Dataset
-from database import get_db
-from sqlalchemy.orm import Session
 from auth import get_current_user
+from database import get_db
+from models import Anomaly, AnomalyNotification, AnomalyThreshold, Dataset
 
 router = APIRouter(prefix="/api/v1/anomalies", tags=["Anomaly Detection"])
 
@@ -86,9 +86,8 @@ def scan_for_anomalies(
     """Run anomaly detection scan on all datasets or a specific dataset/metric."""
     total = 0
     results = {}
-    query = (
-        db.query(Dataset)
-        .filter(Dataset.status == "ready", Dataset.user_id == current_user.id)
+    query = db.query(Dataset).filter(
+        Dataset.status == "ready", Dataset.user_id == current_user.id
     )
     datasets = query.all()
     if dataset_id:
@@ -143,7 +142,9 @@ def list_anomalies(
             severity=a.severity,
             detection_method=a.detection_method,
             status=a.status,
-            investigated_at=a.investigated_at.isoformat() if a.investigated_at else None,
+            investigated_at=(
+                a.investigated_at.isoformat() if a.investigated_at else None
+            ),
             notes=a.notes,
             created_at=a.created_at.isoformat() if a.created_at else "",
         )
@@ -174,7 +175,9 @@ def update_anomaly(
         severity=anomaly.severity,
         detection_method=anomaly.detection_method,
         status=anomaly.status,
-        investigated_at=anomaly.investigated_at.isoformat() if anomaly.investigated_at else None,
+        investigated_at=(
+            anomaly.investigated_at.isoformat() if anomaly.investigated_at else None
+        ),
         notes=anomaly.notes,
         created_at=anomaly.created_at.isoformat() if anomaly.created_at else "",
     )
@@ -192,7 +195,9 @@ def get_notifications(
     )
     if unread_only:
         query = query.filter(AnomalyNotification.read.is_(False))
-    notifications = query.order_by(AnomalyNotification.created_at.desc()).limit(50).all()
+    notifications = (
+        query.order_by(AnomalyNotification.created_at.desc()).limit(50).all()
+    )
     return [
         NotificationResponse(
             id=str(n.id),
@@ -203,15 +208,23 @@ def get_notifications(
                 id=str(n.anomaly.id),
                 dataset_id=str(n.anomaly.dataset_id),
                 metric_name=n.anomaly.metric_name,
-                timestamp=n.anomaly.timestamp.isoformat() if n.anomaly.timestamp else "",
+                timestamp=(
+                    n.anomaly.timestamp.isoformat() if n.anomaly.timestamp else ""
+                ),
                 expected_value=n.anomaly.expected_value,
                 actual_value=n.anomaly.actual_value,
                 severity=n.anomaly.severity,
                 detection_method=n.anomaly.detection_method,
                 status=n.anomaly.status,
-                investigated_at=n.anomaly.investigated_at.isoformat() if n.anomaly.investigated_at else None,
+                investigated_at=(
+                    n.anomaly.investigated_at.isoformat()
+                    if n.anomaly.investigated_at
+                    else None
+                ),
                 notes=n.anomaly.notes,
-                created_at=n.anomaly.created_at.isoformat() if n.anomaly.created_at else "",
+                created_at=(
+                    n.anomaly.created_at.isoformat() if n.anomaly.created_at else ""
+                ),
             ),
         )
         for n in notifications
@@ -249,7 +262,12 @@ def create_or_update_threshold(
     """Set anomaly detection sensitivity threshold for a metric."""
     dataset_id = None
     threshold = set_metric_threshold(
-        db, dataset_id or "", req.metric_name, req.z_score_threshold, req.iqr_multiplier, req.enabled
+        db,
+        dataset_id or "",
+        req.metric_name,
+        req.z_score_threshold,
+        req.iqr_multiplier,
+        req.enabled,
     )
     return ThresholdResponse(
         id=str(threshold.id),
@@ -268,7 +286,11 @@ def list_thresholds(
     current_user=Depends(get_current_user),
 ):
     """List anomaly detection thresholds for current user's datasets."""
-    query = db.query(AnomalyThreshold).join(Dataset).filter(Dataset.user_id == current_user.id)
+    query = (
+        db.query(AnomalyThreshold)
+        .join(Dataset)
+        .filter(Dataset.user_id == current_user.id)
+    )
     if dataset_id:
         query = query.filter(AnomalyThreshold.dataset_id == dataset_id)
     thresholds = query.all()

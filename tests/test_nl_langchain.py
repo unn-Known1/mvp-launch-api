@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from nl_langchain import (
-    LangChainTranslator,
     JSONOutputParser,
+    LangChainTranslator,
     create_translator_from_env,
 )
 from nl_to_sql import SchemaInfo
@@ -24,7 +24,7 @@ class TestJSONOutputParser:
 
     def test_parse_json_from_markdown(self):
         parser = JSONOutputParser()
-        result = parser.parse("```json\n{\"score\": 70}\n```")
+        result = parser.parse('```json\n{"score": 70}\n```')
         assert result["score"] == 70
 
     def test_parse_invalid_json_raises(self):
@@ -64,9 +64,7 @@ class TestLangChainTranslator:
         mock_get_llm.return_value = None
 
         translator = LangChainTranslator()
-        schema = SchemaInfo(
-            tables=[{"name": "data", "columns": []}]
-        )
+        schema = SchemaInfo(tables=[{"name": "data", "columns": []}])
         result = translator.translate("Show data", schema)
         assert result.generated_sql is not None
         assert "SELECT" in result.generated_sql

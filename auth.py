@@ -9,13 +9,13 @@ from uuid import uuid4
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWTError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import User, Role, TokenBlacklist, DEFAULT_ROLES
+from models import DEFAULT_ROLES, Role, TokenBlacklist, User
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 ALGORITHM = "HS256"
@@ -95,10 +95,14 @@ async def get_current_user(
 
     token_jti = payload.get("jti")
     if token_jti:
-        blacklisted = db.query(TokenBlacklist).filter(
-            TokenBlacklist.token_jti == token_jti,
-            TokenBlacklist.expires_at > datetime.now(timezone.utc),
-        ).first()
+        blacklisted = (
+            db.query(TokenBlacklist)
+            .filter(
+                TokenBlacklist.token_jti == token_jti,
+                TokenBlacklist.expires_at > datetime.now(timezone.utc),
+            )
+            .first()
+        )
         if blacklisted:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -116,7 +120,9 @@ async def get_current_user(
 
 
 def require_permissions(*required_permissions: str):
-    async def permission_checker(current_user: User = Depends(get_current_user)) -> User:
+    async def permission_checker(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
         if not current_user.role:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -148,8 +154,12 @@ def seed_default_roles(db: Session) -> None:
     db.commit()
 
 
-def blacklist_token(token_jti: str, token_sub: str, expires_at: datetime, db: Session) -> None:
-    existing = db.query(TokenBlacklist).filter(TokenBlacklist.token_jti == token_jti).first()
+def blacklist_token(
+    token_jti: str, token_sub: str, expires_at: datetime, db: Session
+) -> None:
+    existing = (
+        db.query(TokenBlacklist).filter(TokenBlacklist.token_jti == token_jti).first()
+    )
     if not existing:
         entry = TokenBlacklist(
             token_jti=token_jti,

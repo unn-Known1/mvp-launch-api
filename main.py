@@ -9,27 +9,27 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import SessionLocal, engine
+from anomaly_router import router as anomaly_router
 from auth import seed_default_roles
 from auth_router import router as auth_router
-from role_router import router as role_router
 from connectors.router import router as connectors_router
-from anomaly_router import router as anomaly_router
-from nl_query_router import router as nl_query_router
 from csv_upload_router import router as csv_upload_router
-from report_router import router as report_router
+from database import SessionLocal, engine
 from forecast_router import router as forecast_router
-
+from nl_query_router import router as nl_query_router
+from report_router import router as report_router
+from role_router import router as role_router
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/app_db"
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/app_db"
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    print(f"Starting MVP Launch API - Database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}")
+    print(
+        f"Starting MVP Launch API - Database: {DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else DATABASE_URL}"
+    )
     db = SessionLocal()
     try:
         seed_default_roles(db)
@@ -53,7 +53,12 @@ _allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
 _allowed_origins = (
     [origin.strip() for origin in _allowed_origins_str.split(",") if origin.strip()]
     if _allowed_origins_str
-    else ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"]
+    else [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
 )
 
 app.add_middleware(
@@ -93,4 +98,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

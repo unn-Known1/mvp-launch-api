@@ -7,20 +7,18 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from models import Dataset
+from sqlalchemy.orm import Session
 
+from auth import get_current_user
+from database import get_db
 from forecast import (
+    backtest_forecast,
+    forecasts_to_csv,
     generate_forecast,
     get_forecast_by_id,
     list_forecasts,
-    backtest_forecast,
-    forecasts_to_csv,
 )
-
-from database import get_db
-from sqlalchemy.orm import Session
-from auth import get_current_user
-
+from models import Dataset
 
 router = APIRouter(prefix="/api/v1/ml/forecast", tags=["ML"])
 
@@ -71,11 +69,21 @@ class BacktestResponse(BaseModel):
 
 
 @router.post("", response_model=ForecastResponse, status_code=201)
-def create_forecast(req: ForecastRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def create_forecast(
+    req: ForecastRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Generate a forecast using Prophet."""
-    dataset = db.query(Dataset).filter(Dataset.id == req.dataset_id, Dataset.user_id == current_user.id).first()
+    dataset = (
+        db.query(Dataset)
+        .filter(Dataset.id == req.dataset_id, Dataset.user_id == current_user.id)
+        .first()
+    )
     if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found or access denied")
+        raise HTTPException(
+            status_code=404, detail="Dataset not found or access denied"
+        )
 
     try:
         forecast_record = generate_forecast(
@@ -101,8 +109,14 @@ def create_forecast(req: ForecastRequest, db: Session = Depends(get_db), current
         model_metrics=forecast_record.model_metrics,
         status=forecast_record.status,
         error_message=forecast_record.error_message,
-        created_at=forecast_record.created_at.isoformat() if forecast_record.created_at else "",
-        completed_at=forecast_record.completed_at.isoformat() if forecast_record.completed_at else None,
+        created_at=(
+            forecast_record.created_at.isoformat() if forecast_record.created_at else ""
+        ),
+        completed_at=(
+            forecast_record.completed_at.isoformat()
+            if forecast_record.completed_at
+            else None
+        ),
     )
 
 
@@ -135,13 +149,23 @@ def list_forecasts_endpoint(
 
 
 @router.get("/{forecast_id}", response_model=ForecastResponse)
-def get_forecast(forecast_id: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def get_forecast(
+    forecast_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Get a specific forecast by ID."""
     forecast_record = get_forecast_by_id(db, forecast_id)
     if not forecast_record:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()  # noqa: E501
+    dataset = (
+        db.query(Dataset)
+        .filter(
+            Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id
+        )
+        .first()
+    )  # noqa: E501
     if not dataset:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -156,8 +180,14 @@ def get_forecast(forecast_id: str, db: Session = Depends(get_db), current_user=D
         model_metrics=forecast_record.model_metrics,
         status=forecast_record.status,
         error_message=forecast_record.error_message,
-        created_at=forecast_record.created_at.isoformat() if forecast_record.created_at else "",
-        completed_at=forecast_record.completed_at.isoformat() if forecast_record.completed_at else None,
+        created_at=(
+            forecast_record.created_at.isoformat() if forecast_record.created_at else ""
+        ),
+        completed_at=(
+            forecast_record.completed_at.isoformat()
+            if forecast_record.completed_at
+            else None
+        ),
     )
 
 
@@ -172,7 +202,13 @@ def backtest_forecast_endpoint(
     if not forecast_record:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()  # noqa: E501
+    dataset = (
+        db.query(Dataset)
+        .filter(
+            Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id
+        )
+        .first()
+    )  # noqa: E501
     if not dataset:
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -190,13 +226,23 @@ def backtest_forecast_endpoint(
 
 
 @router.get("/{forecast_id}/download")
-def download_forecast_csv(forecast_id: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def download_forecast_csv(
+    forecast_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Download forecast predictions as CSV."""
     forecast_record = get_forecast_by_id(db, forecast_id)
     if not forecast_record:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    dataset = db.query(Dataset).filter(Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id).first()  # noqa: E501
+    dataset = (
+        db.query(Dataset)
+        .filter(
+            Dataset.id == forecast_record.dataset_id, Dataset.user_id == current_user.id
+        )
+        .first()
+    )  # noqa: E501
     if not dataset:
         raise HTTPException(status_code=403, detail="Access denied")
 

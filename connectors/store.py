@@ -54,7 +54,9 @@ class DataSourceStore:
         records = self._store.values()
         if user_id:
             records = [r for r in records if r.get("user_id") == user_id]
-        return [self._record_to_config(record, include_password=False) for record in records]
+        return [
+            self._record_to_config(record, include_password=False) for record in records
+        ]
 
     def get(self, config_id: str, user_id: str = "") -> Optional[DataSourceConfig]:
         """Get a data source configuration by ID, optionally scoped to user."""
@@ -65,7 +67,9 @@ class DataSourceStore:
             return None
         return self._record_to_config(record)
 
-    def update(self, config_id: str, updates: dict, user_id: str = "") -> Optional[DataSourceConfig]:
+    def update(
+        self, config_id: str, updates: dict, user_id: str = ""
+    ) -> Optional[DataSourceConfig]:
         """Update a data source configuration."""
         record = self._store.get(config_id)
         if not record:
@@ -74,9 +78,16 @@ class DataSourceStore:
             return None
 
         updatable_fields = {
-            "name", "host", "port", "database", "username",
-            "connection_pool_size", "connection_max_overflow",
-            "connection_timeout", "ssl_enabled", "extra_params",
+            "name",
+            "host",
+            "port",
+            "database",
+            "username",
+            "connection_pool_size",
+            "connection_max_overflow",
+            "connection_timeout",
+            "ssl_enabled",
+            "extra_params",
         }
 
         for field, value in updates.items():
@@ -98,7 +109,9 @@ class DataSourceStore:
         del self._store[config_id]
         return True
 
-    def _record_to_config(self, record: dict, include_password: bool = True) -> DataSourceConfig:
+    def _record_to_config(
+        self, record: dict, include_password: bool = True
+    ) -> DataSourceConfig:
         """Convert a stored record to a DataSourceConfig."""
         return DataSourceConfig(
             id=record["id"],

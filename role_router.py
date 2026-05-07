@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth import get_db, get_current_user, require_permissions, seed_default_roles
-from models import User, Role
+from auth import get_current_user, get_db, require_permissions, seed_default_roles
+from models import Role, User
 
 router = APIRouter(prefix="/api/v1/roles", tags=["Role Management"])
 
@@ -168,7 +168,9 @@ def delete_role(
     if not role:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    users_with_role = db.query(User).filter(User.role_id == role_id, User.is_active.is_(True)).count()
+    users_with_role = (
+        db.query(User).filter(User.role_id == role_id, User.is_active.is_(True)).count()
+    )
     if users_with_role > 0:
         raise HTTPException(
             status_code=400,

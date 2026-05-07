@@ -5,20 +5,25 @@ Tests for automated reporting engine with AI summaries.
 import os
 import sys
 import unittest
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import (  # noqa: E402
-    ReportTemplate,
-    ScheduledReport,
-    ReportDelivery,
-    User,
-    Base,
-)
-from report_router import calculate_next_run, generate_ai_summary_from_results  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from models import ReportTemplate  # noqa: E402
+from models import (  # noqa: E402
+    Base,
+    ReportDelivery,
+    ScheduledReport,
+    User,
+)
+from report_router import calculate_next_run  # noqa: E402
+from report_router import (  # noqa: E402
+    generate_ai_summary_from_results,
+)
 
 
 class TestReportRouter(unittest.TestCase):
@@ -62,8 +67,7 @@ class TestReportModels(unittest.TestCase):
 
     def setUp(self):
         self.engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False}
+            "sqlite:///:memory:", connect_args={"check_same_thread": False}
         )
         Base.metadata.create_all(self.engine)
         SessionLocal = sessionmaker(bind=self.engine)
@@ -184,8 +188,7 @@ class TestReportAPI(unittest.TestCase):
 
     def setUp(self):
         self.engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False}
+            "sqlite:///:memory:", connect_args={"check_same_thread": False}
         )
 
         self.db = self.engine.connect()
@@ -194,10 +197,11 @@ class TestReportAPI(unittest.TestCase):
         self.db.close()
 
     def test_ai_summary_api(self):
-        from fastapi.testclient import TestClient
         from fastapi import FastAPI
-        from report_router import router
+        from fastapi.testclient import TestClient
+
         from auth import get_current_user
+        from report_router import router
 
         app = FastAPI()
         app.include_router(router)
@@ -206,10 +210,13 @@ class TestReportAPI(unittest.TestCase):
             yield self.db
 
         from report_router import get_db
+
         app.dependency_overrides[get_db] = override_get_db
 
         # Mock the current user
-        test_user = type("User", (), {"id": "test-user-id", "email": "test@example.com"})()
+        test_user = type(
+            "User", (), {"id": "test-user-id", "email": "test@example.com"}
+        )()
         app.dependency_overrides[get_current_user] = lambda: test_user
 
         client = TestClient(app)

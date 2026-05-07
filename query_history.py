@@ -6,9 +6,9 @@ Stores and retrieves NL query history using the database models.
 from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, desc
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from models import NLQueryHistory, Base
+from models import Base, NLQueryHistory
 
 
 class QueryHistoryService:
@@ -92,9 +92,11 @@ class QueryHistoryService:
         """Get a specific query by ID."""
         session = self._get_session()
         try:
-            return session.query(NLQueryHistory).filter(
-                NLQueryHistory.id == query_id
-            ).first()
+            return (
+                session.query(NLQueryHistory)
+                .filter(NLQueryHistory.id == query_id)
+                .first()
+            )
         finally:
             session.close()
 
@@ -102,10 +104,14 @@ class QueryHistoryService:
         """Delete a query from history (only if owned by user)."""
         session = self._get_session()
         try:
-            entry = session.query(NLQueryHistory).filter(
-                NLQueryHistory.id == query_id,
-                NLQueryHistory.user_id == user_id,
-            ).first()
+            entry = (
+                session.query(NLQueryHistory)
+                .filter(
+                    NLQueryHistory.id == query_id,
+                    NLQueryHistory.user_id == user_id,
+                )
+                .first()
+            )
             if entry:
                 session.delete(entry)
                 session.commit()
@@ -159,6 +165,7 @@ class InMemoryQueryHistory:
     ) -> dict:
         """Store a query in memory."""
         import uuid
+
         entry = {
             "id": str(uuid.uuid4()),
             "user_id": user_id,
@@ -192,7 +199,7 @@ class InMemoryQueryHistory:
         queries = self._store.get(user_id, [])
         if data_source_id:
             queries = [q for q in queries if q.get("data_source_id") == data_source_id]
-        return queries[offset:offset + limit]
+        return queries[offset : offset + limit]
 
     def get_by_id(self, query_id: str) -> dict | None:
         """Get a specific query by ID."""
