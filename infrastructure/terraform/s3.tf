@@ -40,6 +40,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+    filter {
+      prefix = ""
+    }
 
     transition {
       days          = 30

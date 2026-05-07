@@ -52,67 +52,67 @@ resource "aws_cloudwatch_dashboard" "main" {
   dashboard_body = jsonencode({
     widgets = [
       {
-        type       = "metric"
-        x          = 0
-        y          = 0
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ServiceName", "${var.project_name}-${var.environment}"],
-            ["AWS/ECS", "MemoryUtilization", "ServiceName", "${var.project_name}-${var.environment}"]
+            ["AWS/ECS", "CPUUtilization", "ServiceName", aws_ecs_service.backend.name],
+            ["AWS/ECS", "MemoryUtilization", "ServiceName", aws_ecs_service.backend.name]
           ]
-          view    = "timeSeries"
-          title   = "ECS Service Utilization"
-          region  = var.aws_region
+          view   = "timeSeries"
+          title  = "ECS Service Utilization"
+          region = var.aws_region
         }
       },
       {
-        type       = "metric"
-        x          = 12
-        y          = 0
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
         properties = {
           metrics = [
-            ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${var.project_name}-${var.environment}"],
-            ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "${var.project_name}-${var.environment}"]
+            ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", aws_db_instance.postgres.id],
+            ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", aws_db_instance.postgres.id]
           ]
-          view    = "timeSeries"
-          title   = "RDS Metrics"
-          region  = var.aws_region
+          view   = "timeSeries"
+          title  = "RDS Metrics"
+          region = var.aws_region
         }
       },
       {
-        type       = "metric"
-        x          = 0
-        y          = 6
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
           metrics = [
             ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.backend.arn_suffix],
             ["AWS/ApplicationELB", "HTTPCode_Target_2XX_Count", "LoadBalancer", aws_lb.backend.arn_suffix]
           ]
-          view    = "timeSeries"
-          title   = "ALB Request Metrics"
-          region  = var.aws_region
+          view   = "timeSeries"
+          title  = "ALB Request Metrics"
+          region = var.aws_region
         }
       },
       {
-        type       = "metric"
-        x          = 12
-        y          = 6
-        width      = 12
-        height     = 6
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
         properties = {
           metrics = [
-            ["AWS/ElastiCache", "CPUUtilization", "CacheClusterId", "${var.project_name}-${var.environment}"],
-            ["AWS/ElastiCache", "EngineCPUUtilization", "CacheClusterId", "${var.project_name}-${var.environment}"]
+            ["AWS/ElastiCache", "CPUUtilization", "CacheClusterId", aws_elasticache_cluster.redis.id],
+            ["AWS/ElastiCache", "EngineCPUUtilization", "CacheClusterId", aws_elasticache_cluster.redis.id]
           ]
-          view    = "timeSeries"
-          title   = "ElastiCache Metrics"
-          region  = var.aws_region
+          view   = "timeSeries"
+          title  = "ElastiCache Metrics"
+          region = var.aws_region
         }
       }
     ]
@@ -151,7 +151,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_high_cpu" {
   alarm_description   = "RDS CPU utilization is above 80%"
 
   dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
+    DBInstanceIdentifier = aws_db_instance.postgres.id
   }
 
   tags = {

@@ -16,9 +16,9 @@ resource "aws_secretsmanager_secret_version" "db_password" {
   secret_string = jsonencode({
     username = var.db_username
     password = var.db_password
-    host     = aws_db_instance.main.address
-    port     = aws_db_instance.main.port
-    dbname   = aws_db_instance.main.db_name
+    host     = aws_db_instance.postgres.address
+    port     = aws_db_instance.postgres.port
+    dbname   = aws_db_instance.postgres.db_name
   })
 }
 
@@ -36,8 +36,8 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 resource "aws_secretsmanager_secret_version" "app_secrets" {
   secret_id = aws_secretsmanager_secret.app_secrets.id
   secret_string = jsonencode({
-    JWT_SECRET     = random_password.jwt_secret.result
-    API_KEY        = random_password.api_key.result
+    JWT_SECRET = random_password.jwt_secret.result
+    API_KEY    = random_password.api_key.result
   })
 }
 

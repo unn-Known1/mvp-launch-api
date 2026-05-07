@@ -1,0 +1,19 @@
+# Production environment variables
+aws_region = "us-east-1"
+environment = "production"
+project_name = "mvp-launch"
+
+# Database
+db_instance_class = "db.t3.small"
+db_name = "mvplaunch"
+db_username = "admin"
+db_password = "CHANGE_ME_STRONG_PASSWORD_PRODUCTION"
+
+# ECS
+ecs_task_cpu = 512
+ecs_task_memory = 1024
+ecs_desired_count = 2
+
+# Datadog (optional - leave empty to skip Datadog setup)
+datadog_api_key = ""
+datadog_site = "datadoghq.com"

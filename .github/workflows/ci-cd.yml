@@ -21,8 +21,12 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: mvp-launch-backend
-  ECS_CLUSTER: mvp-launch-cluster
-  ECS_SERVICE: mvp-launch-service
+  ECS_CLUSTER_STAGING: mvp-launch-staging-cluster
+  ECS_CLUSTER_PROD: mvp-launch-production-cluster
+  ECS_SERVICE_STAGING: mvp-launch-staging-service
+  ECS_SERVICE_PROD: mvp-launch-service
+  TASK_DEF_STAGING: mvp-launch-staging-backend
+  TASK_DEF_PROD: mvp-launch-production-backend
 
 jobs:
   lint:
@@ -217,7 +221,7 @@ jobs:
 
       - name: Download task definition
         run: |
-          aws ecs describe-task-definition --task-definition mvp-launch-staging --query taskDefinition > task-definition.json
+          aws ecs describe-task-definition --task-definition ${{ env.TASK_DEF_STAGING }} --query taskDefinition > task-definition.json
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
@@ -231,14 +235,14 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}-staging
-          cluster: ${{ env.ECS_CLUSTER }}-staging
+          service: ${{ env.ECS_SERVICE_STAGING }}
+          cluster: ${{ env.ECS_CLUSTER_STAGING }}
           wait-for-service-stability: true
 
       - name: Verify staging deployment
         run: |
           echo "Waiting for staging deployment to stabilize..."
-          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }}-staging --services ${{ env.ECS_SERVICE }}-staging
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER_STAGING }} --services ${{ env.ECS_SERVICE_STAGING }}
 
   rollback-staging:
     name: Rollback Staging
@@ -257,7 +261,7 @@ jobs:
       - name: Get previous task definition
         id: prev-task
         run: |
-          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }}-staging --services ${{ env.ECS_SERVICE }}-staging --query 'services[0].deployments[0].taskDefinition' --output text)
+          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER_STAGING }} --services ${{ env.ECS_SERVICE_STAGING }} --query 'services[0].deployments[0].taskDefinition' --output text)
           echo "Previous task definition: $TASK_DEF_ARN"
           aws ecs describe-task-definition --task-definition $TASK_DEF_ARN --query taskDefinition > previous-task-definition.json
 
@@ -265,8 +269,8 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: previous-task-definition.json
-          service: ${{ env.ECS_SERVICE }}-staging
-          cluster: ${{ env.ECS_CLUSTER }}-staging
+          service: ${{ env.ECS_SERVICE_STAGING }}
+          cluster: ${{ env.ECS_CLUSTER_STAGING }}
           wait-for-service-stability: true
 
   deploy-production:
@@ -286,7 +290,7 @@ jobs:
 
       - name: Download task definition
         run: |
-          aws ecs describe-task-definition --task-definition mvp-launch-prod --query taskDefinition > task-definition.json
+          aws ecs describe-task-definition --task-definition ${{ env.TASK_DEF_PROD }} --query taskDefinition > task-definition.json
 
       - name: Fill in the new image ID in the Amazon ECS task definition
         id: task-def
@@ -300,14 +304,14 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE_PROD }}
+          cluster: ${{ env.ECS_CLUSTER_PROD }}
           wait-for-service-stability: true
 
       - name: Verify production deployment
         run: |
           echo "Waiting for production deployment to stabilize..."
-          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }}
+          aws ecs wait services-stable --cluster ${{ env.ECS_CLUSTER_PROD }} --services ${{ env.ECS_SERVICE_PROD }}
 
   rollback-production:
     name: Rollback Production
@@ -326,7 +330,7 @@ jobs:
       - name: Get previous task definition
         id: prev-task
         run: |
-          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER }} --services ${{ env.ECS_SERVICE }} --query 'services[0].deployments[0].taskDefinition' --output text)
+          TASK_DEF_ARN=$(aws ecs describe-services --cluster ${{ env.ECS_CLUSTER_PROD }} --services ${{ env.ECS_SERVICE_PROD }} --query 'services[0].deployments[0].taskDefinition' --output text)
           echo "Previous task definition: $TASK_DEF_ARN"
           aws ecs describe-task-definition --task-definition $TASK_DEF_ARN --query taskDefinition > previous-task-definition.json
 
@@ -334,6 +338,6 @@ jobs:
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: previous-task-definition.json
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE_PROD }}
+          cluster: ${{ env.ECS_CLUSTER_PROD }}
           wait-for-service-stability: true

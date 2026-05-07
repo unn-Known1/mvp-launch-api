@@ -75,3 +75,36 @@ output "s3_bucket_arn" {
   description = "ARN of the S3 bucket"
   value       = aws_s3_bucket.data.arn
 }
+
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.backend.domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID"
+  value       = aws_cloudfront_distribution.backend.id
+}
+
+output "db_password_secret_arn" {
+  description = "ARN of the Secrets Manager secret for DB password"
+  value       = aws_secretsmanager_secret.db_password.arn
+  sensitive   = true
+}
+
+output "app_secrets_arn" {
+  description = "ARN of the Secrets Manager secret for app secrets"
+  value       = aws_secretsmanager_secret.app_secrets.arn
+  sensitive   = true
+}
+
+output "cloudwatch_dashboard_name" {
+  description = "Name of the CloudWatch dashboard"
+  value       = aws_cloudwatch_dashboard.main.dashboard_name
+}
+
+output "jwt_secret" {
+  description = "Generated JWT secret (write once, store safely)"
+  value       = random_password.jwt_secret.result
+  sensitive   = true
+}

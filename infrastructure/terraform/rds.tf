@@ -25,15 +25,15 @@ resource "aws_db_instance" "postgres" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  multi_az               = var.environment == "production" ? true : false
+  multi_az                = var.environment == "production" ? true : false
   backup_retention_period = var.environment == "production" ? 7 : 1
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  skip_final_snapshot     = var.environment == "production" ? false : true
-  deletion_protection    = var.environment == "production" ? true : false
+  skip_final_snapshot = var.environment == "production" ? false : true
+  deletion_protection = var.environment == "production" ? true : false
 
-  performance_insights_enabled = true
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
 
   tags = {
