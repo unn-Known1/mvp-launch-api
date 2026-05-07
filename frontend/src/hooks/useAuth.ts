@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
-import { getToken as apiGetToken } from "../services/api"
+import { getToken as apiGetToken, logout as apiLogout } from "../services/api"
 
 interface User {
   id: string
@@ -79,7 +79,11 @@ export function useAuth(): AuthState & { logout: () => void; getToken: () => Pro
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [loadUser])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await apiLogout()
+    } catch {
+    }
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")
     localStorage.removeItem("token_expires_at")
