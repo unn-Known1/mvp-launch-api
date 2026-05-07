@@ -5,7 +5,7 @@ Authentication router - login, logout, refresh, register endpoints.
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -86,7 +86,27 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout")
-def logout(current_user=Depends(get_current_user)):
+def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token_str = auth_header[len("Bearer "):]
+        try:
+            payload = decode_token(token_str)
+            token_jti = payload.get("jti")
+            token_exp = payload.get("exp")
+            if token_jti and token_exp:
+                blacklist_token(
+                    token_jti=token_jti,
+                    token_sub=str(current_user.id),
+                    expires_at=datetime.fromtimestamp(token_exp),
+                    db=db,
+                )
+        except HTTPException:
+            pass
     return {"message": "Logout successful"}
 
 
