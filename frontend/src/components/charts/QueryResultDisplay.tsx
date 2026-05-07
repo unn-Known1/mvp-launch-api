@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Chart, type ChartData, type ChartType } from "./Chart"
+import { Chart } from "./Chart"
+import type { ChartData, ChartType } from "./chartUtils"
 import { DataTable } from "../tables/DataTable"
 import { Button } from "../ui/Button"
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/Card"
