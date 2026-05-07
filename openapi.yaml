@@ -320,7 +320,7 @@ paths:
         '204':
           description: Dataset deleted
 
-  /ml/forecast:
+  /api/v1/ml/forecast:
     post:
       tags:
         - ML
@@ -363,6 +363,27 @@ paths:
                       type: object
                   model_metrics:
                     type: object
+
+  /api/v1/ml/forecast/{forecast_id}:
+    get:
+      tags:
+        - ML
+      summary: Get a specific forecast
+      operationId: getForecast
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: forecast_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Forecast details
+        '404':
+          description: Forecast not found
 
   /ml/analyze:
     post:
@@ -820,57 +841,11 @@ paths:
           description: Notification marked as read
 
   /anomalies/thresholds:
-    post:
-      tags:
-        - Anomaly Detection
-      summary: Set anomaly detection threshold
-      operationId: setThreshold
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - metric_name
-              properties:
-                metric_name:
-                  type: string
-                z_score_threshold:
-                  type: integer
-                  default: 3
-                  minimum: 1
-                  maximum: 10
-                iqr_multiplier:
-                  type: integer
-                  default: 3
-                  minimum: 1
-                  maximum: 10
-                enabled:
-                  type: boolean
-                  default: true
-      responses:
-        '201':
-          description: Threshold set
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Threshold'
     get:
       tags:
         - Anomaly Detection
-      summary: List anomaly thresholds
+      summary: List all anomaly thresholds
       operationId: listThresholds
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: dataset_id
-          in: query
-          schema:
-            type: string
-            format: uuid
       responses:
         '200':
           description: List of thresholds
@@ -880,6 +855,96 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Threshold'
+
+  /csv/detect:
+    post:
+      tags:
+        - CSV Upload
+      summary: Upload CSV and detect column types without storing
+      operationId: detectCsvTypes
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file (max 100MB)
+      responses:
+        '200':
+          description: Detected column types and preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CSVDetectionResponse'
+        '400':
+          description: Invalid CSV file
+        '413':
+          description: File exceeds 100MB limit
+
+  /csv/upload:
+    post:
+      tags:
+        - CSV Upload
+      summary: Upload CSV, auto-detect types, and store in database
+      operationId: uploadCsv
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file (max 100MB)
+                dataset_name:
+                  type: string
+                  description: Optional name for the dataset
+                description:
+                  type: string
+                  description: Optional description for the dataset
+                user_id:
+                  type: string
+                  format: uuid
+                  description: User ID (defaults to system user)
+      responses:
+        '200':
+          description: Dataset created and data stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CSVUploadResponse'
+        '400':
+          description: Invalid CSV file
+        '413':
+          description: File exceeds 100MB limit
+        '500':
+          description: Failed to store data
+
+  /csv/datasets:
+    get:
+      tags:
+        - CSV Upload
+      summary: List all CSV-imported datasets
+      operationId: listCsvDatasets
+      responses:
+        '200':
+          description: List of datasets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DatasetResponse'
 
 components:
   securitySchemes:
@@ -1086,3 +1151,617 @@ components:
           type: integer
         enabled:
           type: boolean
+
+    ColumnTypeInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        inferred_type:
+          type: string
+          enum: [string, number, date, boolean]
+        sample_values:
+          type: array
+          items:
+            type: string
+
+    CSVDetectionResponse:
+      type: object
+      properties:
+        filename:
+          type: string
+        row_count:
+          type: integer
+        column_count:
+          type: integer
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColumnTypeInfo'
+        preview:
+          type: array
+          items:
+            type: object
+
+    DatasetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        row_count:
+          type: integer
+        size_bytes:
+          type: integer
+        status:
+          type: string
+        schema:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ImportBatchResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        dataset_id:
+          type: string
+          format: uuid
+        source_type:
+          type: string
+        status:
+          type: string
+        total_rows:
+          type: integer
+        processed_rows:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CSVUploadResponse:
+      type: object
+      properties:
+        dataset:
+          $ref: '#/components/schemas/DatasetResponse'
+        import_batch:
+          $ref: '#/components/schemas/ImportBatchResponse'
+        detection:
+          $ref: '#/components/schemas/CSVDetectionResponse'
+  /reports/templates:
+    post:
+      tags:
+        - Reports
+      summary: Create report template
+      operationId: createReportTemplate
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - config
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                config:
+                  type: object
+                  properties:
+                    queries:
+                      type: array
+                      items:
+                        type: object
+                    charts:
+                      type: array
+                      items:
+                        type: object
+                    datasets:
+                      type: array
+                      items:
+                        type: string
+                    include_ai_summary:
+                      type: boolean
+                      default: true
+                    include_csv_export:
+                      type: boolean
+                      default: true
+      responses:
+        '200':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportTemplateResponse'
+    get:
+      tags:
+        - Reports
+      summary: List report templates
+      operationId: listReportTemplates
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportTemplateResponse'
+
+  /reports/scheduled:
+    post:
+      tags:
+        - Reports
+      summary: Create scheduled report
+      operationId: createScheduledReport
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - frequency
+                - recipients
+                - config
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                template_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                frequency:
+                  type: string
+                  enum: [daily, weekly, monthly]
+                time_of_day:
+                  type: string
+                  default: "08:00"
+                  pattern: "^([01]\\d|2[0-3]):([0-5]\\d)$"
+                timezone:
+                  type: string
+                  default: "UTC"
+                recipients:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: email
+                config:
+                  type: object
+      responses:
+        '200':
+          description: Scheduled report created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledReportResponse'
+    get:
+      tags:
+        - Reports
+      summary: List scheduled reports
+      operationId: listScheduledReports
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: is_active
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of scheduled reports
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduledReportResponse'
+
+  /reports/scheduled/{report_id}:
+    get:
+      tags:
+        - Reports
+      summary: Get scheduled report
+      operationId: getScheduledReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Scheduled report details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduledReportResponse'
+    put:
+      tags:
+        - Reports
+      summary: Update scheduled report
+      operationId: updateScheduledReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                frequency:
+                  type: string
+                  enum: [daily, weekly, monthly]
+                time_of_day:
+                  type: string
+                timezone:
+                  type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                config:
+                  type: object
+                is_active:
+                  type: boolean
+      responses:
+        '200':
+          description: Scheduled report updated
+    delete:
+      tags:
+        - Reports
+      summary: Delete scheduled report
+      operationId: deleteScheduledReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Scheduled report deleted
+
+  /reports/scheduled/{report_id}/pause:
+    post:
+      tags:
+        - Reports
+      summary: Pause scheduled report
+      operationId: pauseScheduledReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report paused
+
+  /reports/scheduled/{report_id}/resume:
+    post:
+      tags:
+        - Reports
+      summary: Resume scheduled report
+      operationId: resumeScheduledReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report resumed
+
+  /reports/scheduled/{report_id}/run:
+    post:
+      tags:
+        - Reports
+      summary: Run scheduled report manually
+      operationId: runScheduledReport
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Report execution started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDeliveryResponse'
+
+  /reports/deliveries:
+    get:
+      tags:
+        - Reports
+      summary: List report deliveries
+      operationId: listReportDeliveries
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: report_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportDeliveryResponse'
+
+  /reports/ai-summary:
+    post:
+      tags:
+        - Reports
+      summary: Generate AI summary from query results
+      operationId: generateAISummary
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query_results
+                - query_description
+              properties:
+                query_results:
+                  type: array
+                  items:
+                    type: object
+                query_description:
+                  type: string
+      responses:
+        '200':
+          description: AI summary generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                  key_insights:
+                    type: array
+                    items:
+                      type: string
+                  recommendations:
+                    type: array
+                    items:
+                      type: string
+
+components:
+  schemas:
+    ReportTemplateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        config:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ScheduledReportResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        template_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        frequency:
+          type: string
+        time_of_day:
+          type: string
+        timezone:
+          type: string
+        recipients:
+          type: array
+          items:
+            type: string
+        is_active:
+          type: boolean
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        config:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ReportDeliveryResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scheduled_report_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        pdf_url:
+          type: string
+          nullable: true
+        csv_urls:
+          type: array
+          items:
+            type: string
+        ai_summary:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
