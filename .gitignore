@@ -63,5 +63,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Artifacts
+=*
+memory/
+
 # Project specific
 infrastructure/terraform/terraform.tfvars
