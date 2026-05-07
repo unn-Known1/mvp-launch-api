@@ -11,6 +11,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -245,6 +246,8 @@ class Anomaly(Base):
     iqr_lower = Column(String(50), nullable=True)
     iqr_upper = Column(String(50), nullable=True)
     status = Column(String(20), default="flagged")
+    model_version = Column(String(50), nullable=True)
+    confidence = Column(Float, nullable=True)
     investigated_at = Column(DateTime, nullable=True)
     investigated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
@@ -299,6 +302,78 @@ class AnomalyNotification(Base):
     )
 
 
+class ReportTemplate(Base):
+    __tablename__ = "report_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    config = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    scheduled_reports = relationship("ScheduledReport", back_populates="template")
+
+    __table_args__ = (
+        Index("ix_report_templates_user_id", "user_id"),
+    )
+
+
+class ScheduledReport(Base):
+    __tablename__ = "scheduled_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("report_templates.id"), nullable=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    frequency = Column(String(20), nullable=False)
+    time_of_day = Column(String(8), nullable=False, default="08:00")
+    timezone = Column(String(50), nullable=False, default="UTC")
+    recipients = Column(JSON, nullable=False, default=list)
+    is_active = Column(Boolean, default=True)
+    last_run_at = Column(DateTime, nullable=True)
+    next_run_at = Column(DateTime, nullable=True)
+    config = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    template = relationship("ReportTemplate", back_populates="scheduled_reports")
+    deliveries = relationship("ReportDelivery", back_populates="scheduled_report")
+
+    __table_args__ = (
+        Index("ix_scheduled_reports_user_id", "user_id"),
+        Index("ix_scheduled_reports_next_run_at", "next_run_at"),
+        Index("ix_scheduled_reports_is_active", "is_active"),
+    )
+
+
+class ReportDelivery(Base):
+    __tablename__ = "report_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    scheduled_report_id = Column(UUID(as_uuid=True), ForeignKey("scheduled_reports.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    delivered_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    pdf_url = Column(String(512), nullable=True)
+    csv_urls = Column(JSON, nullable=True, default=list)
+    ai_summary = Column(Text, nullable=True)
+    report_metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    scheduled_report = relationship("ScheduledReport", back_populates="deliveries")
+
+    __table_args__ = (
+        Index("ix_report_deliveries_scheduled_report_id", "scheduled_report_id"),
+        Index("ix_report_deliveries_status", "status"),
+        Index("ix_report_deliveries_created_at", "created_at"),
+    )
+
+
 # Default Roles Configuration
 DEFAULT_ROLES = {
     "admin": {
@@ -314,6 +389,9 @@ DEFAULT_ROLES = {
             "ml:nlp",
             "nl_query:read",
             "nl_query:write",
+            "report:read",
+            "report:write",
+            "report:delete",
             "admin:access",
             "audit:read",
         ],
@@ -327,6 +405,8 @@ DEFAULT_ROLES = {
             "ml:nlp",
             "nl_query:read",
             "nl_query:write",
+            "report:read",
+            "report:write",
         ],
     },
     "viewer": {
@@ -334,6 +414,7 @@ DEFAULT_ROLES = {
         "permissions": [
             "datasets:read",
             "nl_query:read",
+            "report:read",
         ],
     },
 }
