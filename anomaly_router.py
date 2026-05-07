@@ -17,6 +17,7 @@ from anomaly import (
 from models import Anomaly, AnomalyThreshold, AnomalyNotification, Dataset
 from database import get_db
 from sqlalchemy.orm import Session
+from auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/anomalies", tags=["Anomaly Detection"])
 
@@ -82,15 +83,16 @@ def scan_for_anomalies(
     dataset_id: Optional[str] = Query(None),
     metric_name: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Run anomaly detection scan on all datasets or a specific dataset/metric."""
     total = 0
     results = {}
-    datasets = (
+    query = (
         db.query(Dataset)
-        .filter(Dataset.status == "ready")
-        .all()
+        .filter(Dataset.status == "ready", Dataset.user_id == current_user.id)
     )
+    datasets = query.all()
     if dataset_id:
         datasets = [d for d in datasets if str(d.id) == dataset_id]
     for ds in datasets:
@@ -121,9 +123,10 @@ def list_anomalies(
     status: Optional[str] = Query(None, pattern="^(flagged|investigated|dismissed)$"),
     severity: Optional[str] = Query(None, pattern="^(low|medium|high)$"),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """List anomalies with optional filters."""
-    query = db.query(Anomaly)
+    query = db.query(Anomaly).join(Dataset).filter(Dataset.user_id == current_user.id)
     if dataset_id:
         query = query.filter(Anomaly.dataset_id == dataset_id)
     if status:
@@ -155,14 +158,11 @@ def update_anomaly(
     anomaly_id: str,
     req: UpdateAnomalyRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Mark an anomaly as investigated or dismissed."""
-    from models import User
-
-    user = db.query(User).first()
-    user_id = str(user.id) if user else None
     anomaly = update_anomaly_status(
-        db, anomaly_id, req.status, user_id or "", req.notes
+        db, anomaly_id, req.status, str(current_user.id), req.notes
     )
     if not anomaly:
         raise HTTPException(status_code=404, detail="Anomaly not found")
@@ -186,15 +186,11 @@ def update_anomaly(
 def get_notifications(
     unread_only: bool = Query(False),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Get anomaly notifications for the current user."""
-    from models import User
-
-    user = db.query(User).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
     query = db.query(AnomalyNotification).filter(
-        AnomalyNotification.user_id == user.id
+        AnomalyNotification.user_id == current_user.id
     )
     if unread_only:
         query = query.filter(AnomalyNotification.read == False)
@@ -226,18 +222,17 @@ def get_notifications(
 
 
 @router.post("/notifications/{notification_id}/read", status_code=204)
-def mark_notification_read(notification_id: str, db: Session = Depends(get_db)):
+def mark_notification_read(
+    notification_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Mark a notification as read."""
-    from models import User
-
-    user = db.query(User).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
     notification = (
         db.query(AnomalyNotification)
         .filter(
             AnomalyNotification.id == notification_id,
-            AnomalyNotification.user_id == user.id,
+            AnomalyNotification.user_id == current_user.id,
         )
         .first()
     )
@@ -248,7 +243,7 @@ def mark_notification_read(notification_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/thresholds", response_model=ThresholdResponse, status_code=201)
-def create_or_update_threshold(req: ThresholdRequest, db: Session = Depends(get_db)):
+def create_or_update_threshold(req: ThresholdRequest, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     """Set anomaly detection sensitivity threshold for a metric."""
     dataset_id = None
     threshold = set_metric_threshold(
@@ -268,9 +263,10 @@ def create_or_update_threshold(req: ThresholdRequest, db: Session = Depends(get_
 def list_thresholds(
     dataset_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    """List anomaly detection thresholds."""
-    query = db.query(AnomalyThreshold)
+    """List anomaly detection thresholds for current user's datasets."""
+    query = db.query(AnomalyThreshold).join(Dataset).filter(Dataset.user_id == current_user.id)
     if dataset_id:
         query = query.filter(AnomalyThreshold.dataset_id == dataset_id)
     thresholds = query.all()
