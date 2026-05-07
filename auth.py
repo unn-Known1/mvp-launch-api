@@ -5,6 +5,7 @@ Authentication module - JWT handling, password hashing, FastAPI dependencies.
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import uuid4
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -14,7 +15,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import User, Role, DEFAULT_ROLES
+from models import User, Role, TokenBlacklist, DEFAULT_ROLES
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 ALGORITHM = "HS256"
@@ -35,13 +36,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(user_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": user_id, "type": "access", "exp": expire}
+    payload = {"sub": user_id, "type": "access", "jti": uuid4().hex, "exp": expire}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_refresh_token(user_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": user_id, "type": "refresh", "exp": expire}
+    payload = {"sub": user_id, "type": "refresh", "jti": uuid4().hex, "exp": expire}
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -92,6 +93,18 @@ async def get_current_user(
             detail="Invalid token",
         )
 
+    token_jti = payload.get("jti")
+    if token_jti:
+        blacklisted = db.query(TokenBlacklist).filter(
+            TokenBlacklist.token_jti == token_jti,
+            TokenBlacklist.expires_at > datetime.now(timezone.utc),
+        ).first()
+        if blacklisted:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+            )
+
     user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     if user is None:
         raise HTTPException(
@@ -132,4 +145,24 @@ def seed_default_roles(db: Session) -> None:
                 permissions=config["permissions"],
             )
             db.add(role)
+    db.commit()
+
+
+def blacklist_token(token_jti: str, token_sub: str, expires_at: datetime, db: Session) -> None:
+    existing = db.query(TokenBlacklist).filter(TokenBlacklist.token_jti == token_jti).first()
+    if not existing:
+        entry = TokenBlacklist(
+            token_jti=token_jti,
+            token_sub=token_sub,
+            expires_at=expires_at,
+        )
+        db.add(entry)
+        db.commit()
+    cleanup_expired_blacklist(db)
+
+
+def cleanup_expired_blacklist(db: Session) -> None:
+    db.query(TokenBlacklist).filter(
+        TokenBlacklist.expires_at <= datetime.now(timezone.utc)
+    ).delete()
     db.commit()

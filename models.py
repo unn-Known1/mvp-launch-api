@@ -350,6 +350,16 @@ class ScheduledReport(Base):
     )
 
 
+class TokenBlacklist(Base):
+    __tablename__ = "token_blacklist"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    token_jti = Column(String(64), unique=True, nullable=False, index=True)
+    token_sub = Column(String(36), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    blacklisted_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ReportDelivery(Base):
     __tablename__ = "report_deliveries"
 
