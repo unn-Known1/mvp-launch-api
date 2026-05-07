@@ -3,6 +3,7 @@ Credential encryption utility for database connectors.
 Encrypts credentials at rest using Fernet symmetric encryption.
 """
 
+import base64
 import os
 
 from cryptography.fernet import Fernet
@@ -38,7 +39,7 @@ def _get_encryption_key() -> bytes:
     ).encode()
     key_material = kdf.derive(password)
     # Convert to Fernet-compatible format (base64-encoded 32-byte key)
-    return Fernet.generate_key_from_password(key_material, hashes.SHA256())
+    return base64.urlsafe_b64encode(key_material)
 
 
 _encryption_key = None

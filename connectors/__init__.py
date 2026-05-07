@@ -5,6 +5,9 @@ Database connectors package.
 from connectors.base import BaseConnector, DataSourceConfig
 from connectors.mysql import MySQLConnector
 from connectors.postgres import PostgreSQLConnector
+from connectors.store import (  # noqa: F401 - re-exported for public API
+    data_source_store,
+)
 
 
 def create_connector(config: DataSourceConfig) -> BaseConnector:
