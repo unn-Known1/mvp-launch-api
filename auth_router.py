@@ -2,11 +2,11 @@
 Authentication router - login, logout, refresh, register endpoints.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from auth import (
@@ -56,8 +56,7 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -75,7 +74,7 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
             detail="Account is deactivated",
         )
 
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = datetime.now(timezone.utc)
     db.commit()
 
     return TokenResponse(

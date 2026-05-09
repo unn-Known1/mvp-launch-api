@@ -3,7 +3,7 @@ Database Models - MVP Launch
 SQLAlchemy models for PostgreSQL database
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -39,8 +39,8 @@ class User(Base):
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     email_verified = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
     last_login_at = Column(DateTime, nullable=True)
 
     role = relationship("Role", back_populates="users")
@@ -58,8 +58,8 @@ class Role(Base):
     name = Column(String(50), unique=True, nullable=False)
     description = Column(String(255))
     permissions = Column(JSON, nullable=False, default=list)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="role")
 
@@ -74,7 +74,7 @@ class ApiKey(Base):
     is_active = Column(Boolean, default=True)
     expires_at = Column(DateTime, nullable=True)
     last_used_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="api_keys")
 
@@ -94,8 +94,8 @@ class Dataset(Base):
     size_bytes = Column(Integer, default=0)
     status = Column(String(50), default="pending")
     dataset_metadata = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", back_populates="datasets")
     records = relationship("DataRecord", back_populates="dataset")
@@ -116,7 +116,7 @@ class DataRecord(Base):
     import_batch_id = Column(
         UUID(as_uuid=True), ForeignKey("import_batches.id"), nullable=True
     )
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     dataset = relationship("Dataset", back_populates="records")
     import_batch = relationship("ImportBatch", back_populates="records")
@@ -135,7 +135,7 @@ class ImportBatch(Base):
     total_rows = Column(Integer, default=0)
     processed_rows = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
     dataset = relationship("Dataset")
@@ -157,7 +157,7 @@ class Forecast(Base):
     model_metrics = Column(JSON, nullable=True)
     status = Column(String(50), default="running")
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
     dataset = relationship("Dataset", back_populates="forecasts")
@@ -185,7 +185,7 @@ class NLQueryHistory(Base):
     row_count = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
     status = Column(String(50), default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="nl_queries")
 
@@ -204,7 +204,7 @@ class NLPAnalysis(Base):
     text = Column(Text, nullable=False)
     analysis_type = Column(String(50), nullable=False)
     results = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("ix_nlp_analyses_user_id", "user_id"),
@@ -223,7 +223,7 @@ class AuditLog(Base):
     details = Column(JSON, nullable=True)
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(512), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("ix_audit_logs_user_id", "user_id"),
@@ -252,7 +252,7 @@ class Anomaly(Base):
     investigated_at = Column(DateTime, nullable=True)
     investigated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     dataset = relationship("Dataset")
     investigator = relationship("User")
@@ -274,8 +274,8 @@ class AnomalyThreshold(Base):
     z_score_threshold = Column(Integer, default=3)
     iqr_multiplier = Column(Integer, default=3)
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     dataset = relationship("Dataset")
 
@@ -294,7 +294,7 @@ class AnomalyNotification(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     anomaly_id = Column(UUID(as_uuid=True), ForeignKey("anomalies.id"), nullable=False)
     read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User")
     anomaly = relationship("Anomaly")
@@ -313,8 +313,8 @@ class ReportTemplate(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     config = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User")
     scheduled_reports = relationship("ScheduledReport", back_populates="template")
@@ -340,8 +340,8 @@ class ScheduledReport(Base):
     last_run_at = Column(DateTime, nullable=True)
     next_run_at = Column(DateTime, nullable=True)
     config = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User")
     template = relationship("ReportTemplate", back_populates="scheduled_reports")
@@ -361,7 +361,7 @@ class TokenBlacklist(Base):
     token_jti = Column(String(64), unique=True, nullable=False, index=True)
     token_sub = Column(String(36), nullable=False)
     expires_at = Column(DateTime, nullable=False)
-    blacklisted_at = Column(DateTime, default=datetime.utcnow)
+    blacklisted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ReportDelivery(Base):
@@ -378,7 +378,7 @@ class ReportDelivery(Base):
     csv_urls = Column(JSON, nullable=True, default=list)
     ai_summary = Column(Text, nullable=True)
     report_metadata = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     scheduled_report = relationship("ScheduledReport", back_populates="deliveries")
 

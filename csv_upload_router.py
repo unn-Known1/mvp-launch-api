@@ -3,12 +3,12 @@ FastAPI router for CSV file upload and auto-detection pipeline.
 """
 
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
@@ -36,13 +36,15 @@ class CSVDetectionResponse(BaseModel):
 
 
 class DatasetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     description: Optional[str] = None
     row_count: int
     size_bytes: int
     status: str
-    schema: Optional[dict] = None
+    dataset_schema: Optional[dict] = Field(None, alias="schema")
     created_at: Optional[datetime] = None
 
 
@@ -220,7 +222,7 @@ async def upload_csv(
 
         import_batch.status = "completed"
         import_batch.processed_rows = len(df)
-        import_batch.completed_at = datetime.utcnow()
+        import_batch.completed_at = datetime.now(timezone.utc)
         dataset.status = "ready"
 
         db.commit()
@@ -248,7 +250,7 @@ async def upload_csv(
             row_count=dataset.row_count,
             size_bytes=dataset.size_bytes,
             status=dataset.status,
-            schema=dataset.schema,
+            dataset_schema=dataset.schema,
             created_at=dataset.created_at,
         ),
         import_batch=ImportBatchResponse(
@@ -283,7 +285,7 @@ def list_csv_datasets(
             row_count=d.row_count,
             size_bytes=d.size_bytes,
             status=d.status,
-            schema=d.schema,
+            dataset_schema=d.schema,
             created_at=d.created_at,
         )
         for d in datasets

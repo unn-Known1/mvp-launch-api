@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, get_db, require_permissions, seed_default_roles
@@ -35,8 +35,7 @@ class RoleResponse(BaseModel):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserRoleUpdateRequest(BaseModel):
@@ -51,8 +50,7 @@ class UserPermissionResponse(BaseModel):
     permissions: list[str]
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.post("", response_model=RoleResponse, status_code=201)

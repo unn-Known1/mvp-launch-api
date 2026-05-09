@@ -5,7 +5,7 @@ FastAPI router for anomaly detection endpoints.
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from anomaly import (
@@ -51,8 +51,7 @@ class AnomalyResponse(BaseModel):
     notes: Optional[str]
     created_at: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UpdateAnomalyRequest(BaseModel):
@@ -67,8 +66,7 @@ class NotificationResponse(BaseModel):
     created_at: str
     anomaly: AnomalyResponse
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScanResponse(BaseModel):
