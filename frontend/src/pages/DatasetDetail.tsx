@@ -35,7 +35,7 @@ function getStatusBadgeClass(status: string): string {
   }
 }
 
-export function DatasetDetail() {
+export default function DatasetDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [dataset, setDataset] = useState<Dataset | null>(null)

@@ -63,7 +63,7 @@ function DeleteDialog({ dataset, onConfirm, onCancel }: DeleteDialogProps) {
   )
 }
 
-export function DatasetsList() {
+export default function DatasetsList() {
   const navigate = useNavigate()
   const { datasets, total, loading, error, refetch } = useDatasets({ autoFetch: true })
   const [search, setSearch] = useState("")

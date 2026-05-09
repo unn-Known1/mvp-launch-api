@@ -4,7 +4,7 @@ FastAPI router for anomaly detection endpoints.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -13,9 +13,10 @@ from anomaly import (
     set_metric_threshold,
     update_anomaly_status,
 )
-from auth import get_current_user
+from auth import get_current_user, decode_token
 from database import get_db
 from models import Anomaly, AnomalyNotification, AnomalyThreshold, Dataset
+from ws_manager import manager as ws_manager
 
 router = APIRouter(prefix="/api/v1/anomalies", tags=["Anomaly Detection"])
 
@@ -86,6 +87,7 @@ def scan_for_anomalies(
     """Run anomaly detection scan on all datasets or a specific dataset/metric."""
     total = 0
     results = {}
+    user_id = str(current_user.id)
     query = db.query(Dataset).filter(
         Dataset.status == "ready", Dataset.user_id == current_user.id
     )
@@ -95,14 +97,14 @@ def scan_for_anomalies(
     for ds in datasets:
         count = 0
         if metric_name:
-            anomalies = detect_anomalies_for_metric(db, str(ds.id), metric_name)
+            anomalies = detect_anomalies_for_metric(db, str(ds.id), metric_name, user_id)
             count = len(anomalies)
         else:
             from anomaly import extract_numeric_metrics
 
             metrics = extract_numeric_metrics(db, str(ds.id))
             for m in metrics:
-                anomalies = detect_anomalies_for_metric(db, str(ds.id), m)
+                anomalies = detect_anomalies_for_metric(db, str(ds.id), m, user_id)
                 count += len(anomalies)
         if count > 0:
             results[str(ds.id)] = count
@@ -305,3 +307,35 @@ def list_thresholds(
         )
         for t in thresholds
     ]
+
+
+# ── WebSocket endpoint for real-time anomaly alerts ───────────────────────────
+
+@router.websocket("/ws/anomalies")
+async def websocket_anomalies(websocket: WebSocket, token: str = Query(...)):
+    """WebSocket endpoint for real-time anomaly notifications.
+    
+    Connect with ?token=<jwt> query parameter.
+    Authenticates via JWT and keeps connection open for anomaly events.
+    """
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
+        if token_type != "access" or not user_id:
+            await websocket.close(code=4001, reason="Invalid token type")
+            return
+    except Exception:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    await ws_manager.connect(websocket, str(user_id))
+    try:
+        while True:
+            # Keep connection alive; receive pings or client messages
+            data = await websocket.receive_text()
+            # Client could send pong or other messages; ignore for now
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, str(user_id))
+    except Exception:
+        ws_manager.disconnect(websocket, str(user_id))

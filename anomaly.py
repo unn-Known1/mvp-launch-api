@@ -13,6 +13,43 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from models import Anomaly, AnomalyThreshold, DataRecord, Dataset
+from ws_manager import manager as ws_manager
+
+
+def _broadcast_anomalies_sync(anomalies: list[Anomaly], user_id: str) -> None:
+    """Broadcast newly detected anomalies to connected WebSocket clients (sync wrapper)."""
+    import asyncio
+    import threading
+
+    if not anomalies or not user_id:
+        return
+
+    async def _broadcast():
+        for anomaly in anomalies:
+            anomaly_data = {
+                "id": str(anomaly.id),
+                "dataset_id": str(anomaly.dataset_id),
+                "metric_name": anomaly.metric_name,
+                "timestamp": anomaly.timestamp.isoformat() if anomaly.timestamp else None,
+                "expected_value": anomaly.expected_value,
+                "actual_value": anomaly.actual_value,
+                "severity": anomaly.severity,
+                "detection_method": anomaly.detection_method,
+                "status": anomaly.status,
+                "created_at": anomaly.created_at.isoformat() if anomaly.created_at else None,
+            }
+            await ws_manager.broadcast_anomaly(anomaly_data, [user_id])
+
+    def _run_in_thread():
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_broadcast())
+            loop.close()
+        except Exception:
+            pass
+
+    threading.Thread(target=_run_in_thread, daemon=True).start()
 
 
 def calculate_z_score(value: float, mean: float, std_dev: float) -> float:
@@ -255,6 +292,9 @@ def detect_anomalies_for_metric(
                 anomalies.append(anomaly)
 
     db.commit()
+    # Broadcast newly detected anomalies to connected WebSocket clients
+    if anomalies and user_id:
+        _broadcast_anomalies_sync(anomalies, user_id)
     return anomalies
 
 

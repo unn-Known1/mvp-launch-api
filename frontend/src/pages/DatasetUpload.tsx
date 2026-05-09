@@ -9,7 +9,7 @@ import type { Dataset, UploadProgress } from "../services/api"
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
-export function DatasetUpload() {
+export default function DatasetUpload() {
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)

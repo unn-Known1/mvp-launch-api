@@ -1,5 +1,4 @@
 import { useRef, useEffect, useCallback } from "react"
-import * as echarts from "echarts"
 import type { EChartsOption } from "echarts"
 import { suggestChartType, type ChartData, type ChartType } from "./chartUtils"
 
@@ -73,15 +72,29 @@ export function Chart({ data, type, title, className }: ChartProps) {
   useEffect(() => {
     if (!chartRef.current) return
 
-    const chart = echarts.init(chartRef.current)
-    chart.setOption(getOptions())
+    let chart: any = null
+    let handleResize: (() => void) | null = null
 
-    const handleResize = () => chart.resize()
-    window.addEventListener("resize", handleResize)
+    const initChart = async () => {
+      const echarts = await import("echarts")
+      if (!chartRef.current) return
+      
+      chart = echarts.init(chartRef.current)
+      chart.setOption(getOptions())
+
+      handleResize = () => chart.resize()
+      window.addEventListener("resize", handleResize)
+    }
+
+    initChart()
 
     return () => {
-      window.removeEventListener("resize", handleResize)
-      chart.dispose()
+      if (handleResize) {
+        window.removeEventListener("resize", handleResize)
+      }
+      if (chart) {
+        chart.dispose()
+      }
     }
   }, [getOptions])
 

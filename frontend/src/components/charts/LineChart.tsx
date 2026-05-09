@@ -1,5 +1,4 @@
 import { useRef, useEffect } from "react"
-import * as echarts from "echarts"
 
 interface LineChartProps {
   data: { name: string; value: number }[]
@@ -13,30 +12,44 @@ export function LineChart({ data, title, className }: LineChartProps) {
   useEffect(() => {
     if (!chartRef.current) return
 
-    const chart = echarts.init(chartRef.current)
+    let chart: any = null
+    let handleResize: (() => void) | null = null
 
-    chart.setOption({
-      title: title ? { text: title } : undefined,
-      tooltip: { trigger: "axis" },
-      xAxis: {
-        type: "category",
-        data: data.map((d) => d.name),
-      },
-      yAxis: { type: "value" },
-      series: [
-        {
-          data: data.map((d) => d.value),
-          type: "line",
+    const initChart = async () => {
+      const echarts = await import("echarts")
+      if (!chartRef.current) return
+      
+      chart = echarts.init(chartRef.current)
+
+      chart.setOption({
+        title: title ? { text: title } : undefined,
+        tooltip: { trigger: "axis" },
+        xAxis: {
+          type: "category",
+          data: data.map((d) => d.name),
         },
-      ],
-    })
+        yAxis: { type: "value" },
+        series: [
+          {
+            data: data.map((d) => d.value),
+            type: "line",
+          },
+        ],
+      })
 
-    const handleResize = () => chart.resize()
-    window.addEventListener("resize", handleResize)
+      handleResize = () => chart.resize()
+      window.addEventListener("resize", handleResize)
+    }
+
+    initChart()
 
     return () => {
-      window.removeEventListener("resize", handleResize)
-      chart.dispose()
+      if (handleResize) {
+        window.removeEventListener("resize", handleResize)
+      }
+      if (chart) {
+        chart.dispose()
+      }
     }
   }, [data, title])
 

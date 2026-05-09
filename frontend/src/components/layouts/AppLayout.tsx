@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 import { useAppStore } from "../../store/useAppStore"
 import { useNotifications } from "../../hooks/useNotifications"
-import { NotificationBell } from "../../pages/AnomaliesPage"
+import { NotificationBell } from "../NotificationBell"
 import { useAuth } from "../../hooks/useAuth"
 
 interface NavItem {

@@ -13,7 +13,7 @@ const SAMPLE_QUERIES = [
   "Show anomaly trends over time",
 ]
 
-export function QueryPage() {
+export default function QueryPage() {
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<NLQueryResult | null>(null)

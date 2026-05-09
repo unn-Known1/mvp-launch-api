@@ -30,7 +30,7 @@ function generateChartData(): ChartData {
 // TODO: Replace with real forecast ID from user's forecasts list
 const DEMO_FORECAST_ID = "demo-forecast-1"
 
-export function Dashboard() {
+export default function Dashboard() {
   const { user, hasRole } = useAuth()
   const userId = user?.id || ""
   const canViewAllData = hasRole(["admin", "manager"])

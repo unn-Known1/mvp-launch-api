@@ -1,7 +1,7 @@
 import { Button } from "../components/ui/Button"
 import { Card, CardHeader, CardTitle, CardDescription } from "../components/ui/Card"
 
-export function Home() {
+export default function Home() {
   return (
     <div className="space-y-8">
       <section className="text-center py-12">
