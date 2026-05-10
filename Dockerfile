@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create non-root user
-RUN adduser --disabled-password --gecos "" appuser && USER appuser
+RUN adduser --disabled-password --gecos "" appuser
+USER appuser
 
 # Expose the port the app runs on
 EXPOSE 8000

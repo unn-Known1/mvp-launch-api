@@ -21,11 +21,12 @@ sys.path.insert(0, PROJECT_ROOT)
 # Database URL for tests - use embedded postgres from Paperclip config
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:54329/app_db",
+    "postgresql://testuser:testpassword@localhost:5432/app_db",
 )
 
 # Set environment variable before importing
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-ci-only"
 
 # API base URL for testing
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
@@ -108,7 +109,7 @@ def time_series_csv_content() -> bytes:
 
 @pytest.fixture
 def forecast_csv_content() -> bytes:
-    """CSV with date and value columns for forecasting."""
+    """Short CSV with date and value columns (12 rows, insufficient for Prophet)."""
     return b"""date,sales
 2024-01-01,100
 2024-01-02,120
@@ -124,22 +125,33 @@ def forecast_csv_content() -> bytes:
 2024-01-12,158
 """
 
+@pytest.fixture
+def forecast_csv_extended_content() -> bytes:
+    """Extended CSV with 50 data points for forecast E2E tests (meets Prophet minimum)."""
+    rows = "\n".join(
+        f"2024-01-{day:02d},{100 + day * 3 + (day % 10) * 2}"
+        for day in range(1, 51)
+    )
+    return f"date,sales\n{rows}\n".encode()
+
 
 @pytest.fixture
 def override_get_current_user(mock_active_user):
     """Override the get_current_user dependency with a mock user."""
-    from auth import get_current_user, main
+    from auth import get_current_user
+    from main import app as main_app
 
-    main.app.dependency_overrides[get_current_user] = lambda: mock_active_user
+    main_app.dependency_overrides[get_current_user] = lambda: mock_active_user
     yield mock_active_user
-    main.app.dependency_overrides.clear()
+    main_app.dependency_overrides.clear()
 
 
 @pytest.fixture
 def override_get_current_user_inactive(mock_inactive_user):
     """Override the get_current_user dependency with an inactive mock user."""
-    from auth import get_current_user, main
+    from auth import get_current_user
+    from main import app as main_app
 
-    main.app.dependency_overrides[get_current_user] = lambda: mock_inactive_user
+    main_app.dependency_overrides[get_current_user] = lambda: mock_inactive_user
     yield mock_inactive_user
-    main.app.dependency_overrides.clear()
+    main_app.dependency_overrides.clear()

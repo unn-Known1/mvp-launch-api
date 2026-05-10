@@ -16,7 +16,7 @@ from nl_langchain import create_translator_from_env
 from nl_to_sql import ConfidenceLevel, NLQueryResult, SchemaInfo
 from query_history import query_history_store
 
-router = APIRouter(prefix="/nl-query", tags=["NL Query"])
+router = APIRouter(prefix="/api/v1/nl-query", tags=["NL Query"])
 
 
 # --- Request/Response Models ---
