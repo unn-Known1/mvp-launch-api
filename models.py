@@ -42,11 +42,18 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
     last_login_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime, nullable=True)  # C-002: Soft delete support
+
+    # C-001: Added back_populates for new relationships
+    report_templates = relationship("ReportTemplate", back_populates="user", lazy="selectin")
+    scheduled_reports = relationship("ScheduledReport", back_populates="user", lazy="selectin")
+    webhook_subscriptions = relationship("WebhookSubscription", back_populates="user", lazy="selectin")
 
     role = relationship("Role", back_populates="users")
     datasets = relationship("Dataset", back_populates="owner")
     api_keys = relationship("ApiKey", back_populates="user")
     nl_queries = relationship("NLQueryHistory", back_populates="user")
+    anomalies = relationship("Anomaly", back_populates="investigator")
 
     __table_args__ = (Index("ix_users_role_id", "role_id"),)
 
@@ -96,10 +103,14 @@ class Dataset(Base):
     dataset_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    deleted_at = Column(DateTime, nullable=True)
 
     owner = relationship("User", back_populates="datasets")
     records = relationship("DataRecord", back_populates="dataset")
     forecasts = relationship("Forecast", back_populates="dataset")
+    import_batches = relationship("ImportBatch", back_populates="dataset")
+    anomalies = relationship("Anomaly", back_populates="dataset")
+    thresholds = relationship("AnomalyThreshold", back_populates="dataset")
 
     __table_args__ = (
         Index("ix_datasets_user_id", "user_id"),
@@ -137,9 +148,10 @@ class ImportBatch(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
 
-    dataset = relationship("Dataset")
-    records = relationship("DataRecord", back_populates="import_batch")
+    dataset = relationship("Dataset", back_populates="import_batches")
+    records = relationship("DataRecord", back_populates="import_batch", lazy="selectin")
 
     __table_args__ = (Index("ix_import_batches_dataset_id", "dataset_id"),)
 
@@ -254,14 +266,16 @@ class Anomaly(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    dataset = relationship("Dataset")
-    investigator = relationship("User")
+    dataset = relationship("Dataset", back_populates="anomalies", lazy="selectin")
+    investigator = relationship("User", back_populates="anomalies", foreign_keys=[investigated_by])
 
     __table_args__ = (
         Index("ix_anomalies_dataset_id", "dataset_id"),
         Index("ix_anomalies_timestamp", "timestamp"),
         Index("ix_anomalies_status", "status"),
         Index("ix_anomalies_severity", "severity"),
+        Index("ix_anomalies_dataset_status", "dataset_id", "status"),
+        Index("ix_anomalies_dataset_severity", "dataset_id", "severity"),
     )
 
 
@@ -277,7 +291,7 @@ class AnomalyThreshold(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
-    dataset = relationship("Dataset")
+    dataset = relationship("Dataset", back_populates="thresholds")
 
     __table_args__ = (
         Index("ix_anomaly_thresholds_dataset_id", "dataset_id"),
@@ -316,8 +330,8 @@ class ReportTemplate(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
-    user = relationship("User")
-    scheduled_reports = relationship("ScheduledReport", back_populates="template")
+    user = relationship("User", back_populates="report_templates")
+    scheduled_reports = relationship("ScheduledReport", back_populates="template", lazy="selectin")
 
     __table_args__ = (Index("ix_report_templates_user_id", "user_id"),)
 
@@ -343,9 +357,9 @@ class ScheduledReport(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
-    user = relationship("User")
+    user = relationship("User", back_populates="scheduled_reports")
     template = relationship("ReportTemplate", back_populates="scheduled_reports")
-    deliveries = relationship("ReportDelivery", back_populates="scheduled_report")
+    deliveries = relationship("ReportDelivery", back_populates="scheduled_report", lazy="selectin")
 
     __table_args__ = (
         Index("ix_scheduled_reports_user_id", "user_id"),
@@ -386,6 +400,56 @@ class ReportDelivery(Base):
         Index("ix_report_deliveries_scheduled_report_id", "scheduled_report_id"),
         Index("ix_report_deliveries_status", "status"),
         Index("ix_report_deliveries_created_at", "created_at"),
+    )
+
+
+class WebhookSubscription(Base):
+    """B-004: Webhook subscription model for external event notifications."""
+    __tablename__ = "webhook_subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    url = Column(String(512), nullable=False)
+    secret = Column(String(255), nullable=True)  # For HMAC signature verification
+    events = Column(JSON, nullable=False, default=list)  # ["anomaly.created", "report.delivered"]
+    is_active = Column(Boolean, default=True)
+    headers = Column(JSON, nullable=True, default=dict)  # Custom headers to include
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    deleted_at = Column(DateTime, nullable=True)  # C-002: Soft delete support
+
+    # C-001: Added back_populates
+    user = relationship("User", back_populates="webhook_subscriptions")
+
+    __table_args__ = (
+        Index("ix_webhook_subscriptions_user_id", "user_id"),
+        Index("ix_webhook_subscriptions_is_active", "is_active"),
+    )
+
+
+class WebhookDelivery(Base):
+    """B-004: Webhook delivery log for tracking event dispatches."""
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=generate_uuid)
+    subscription_id = Column(UUID(as_uuid=True), ForeignKey("webhook_subscriptions.id"), nullable=False)
+    event = Column(String(100), nullable=False)
+    payload = Column(JSON, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")  # pending, delivered, failed
+    response_status = Column(Integer, nullable=True)
+    response_body = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    attempt_count = Column(Integer, default=0)
+    next_retry_at = Column(DateTime, nullable=True)
+    delivered_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    subscription = relationship("WebhookSubscription")
+
+    __table_args__ = (
+        Index("ix_webhook_deliveries_subscription_id", "subscription_id"),
+        Index("ix_webhook_deliveries_status", "status"),
     )
 
 

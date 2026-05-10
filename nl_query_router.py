@@ -78,13 +78,16 @@ class QueryHistoryResponse(BaseModel):
 # --- Helpers ---
 
 
-def _get_datasource_config(data_source_id: str) -> DataSourceConfig:
-    """Retrieve and validate data source configuration."""
-    config = data_source_store.get(data_source_id)
+def _get_datasource_config(data_source_id: str, user_id: str = "") -> DataSourceConfig:
+    """Retrieve and validate data source configuration with user ownership check.
+    
+    NEW-004 FIX: Now verifies user ownership at store level to prevent access bypass.
+    """
+    config = data_source_store.get(data_source_id, user_id=user_id)
     if not config:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Data source not found: {data_source_id}",
+            detail=f"Data source not found or access denied: {data_source_id}",
         )
     return config
 
@@ -173,7 +176,7 @@ async def translate_query(
     Translate a natural language query to SQL with confidence scoring.
     Optionally executes the query if execute=True.
     """
-    config = _get_datasource_config(request.data_source_id)
+    config = _get_datasource_config(request.data_source_id, str(current_user.id))
     schema_info = _get_schema_info(config)
 
     translator = create_translator_from_env()
@@ -263,7 +266,7 @@ async def get_schema(data_source_id: str, current_user=Depends(get_current_user)
     """
     Get the database schema for a data source (for prompt construction).
     """
-    config = _get_datasource_config(data_source_id)
+    config = _get_datasource_config(data_source_id, str(current_user.id))
     schema_info = _get_schema_info(config)
     return {
         "data_source_id": data_source_id,
@@ -311,7 +314,16 @@ async def get_query_history(
 async def get_query_by_id(query_id: str, current_user=Depends(get_current_user)):
     """
     Get a specific query from history by ID.
+    NEW-007 FIX: Add UUID format validation before passing to store.
     """
+    from uuid import UUID
+    try:
+        UUID(query_id)  # Validate UUID format
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid query ID format",
+        )
     entry = query_history_store.get_by_id(query_id)
     if not entry:
         raise HTTPException(
@@ -320,8 +332,8 @@ async def get_query_by_id(query_id: str, current_user=Depends(get_current_user))
         )
     if entry["user_id"] != str(current_user.id):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Query not found",
         )
 
     return NLQueryResponse(
@@ -381,7 +393,7 @@ async def get_confidence(
     """
     Get confidence score for a NL-to-SQL translation without executing.
     """
-    config = _get_datasource_config(request.data_source_id)
+    config = _get_datasource_config(request.data_source_id, str(current_user.id))
     schema_info = _get_schema_info(config)
 
     translator = create_translator_from_env()

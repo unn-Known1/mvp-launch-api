@@ -1,5 +1,79 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"
 
+const DEFAULT_TIMEOUT = 30000 // 30 seconds
+const MAX_RETRIES = 3
+const BASE_DELAY = 1000 // 1 second
+
+interface RetryOptions {
+  retries?: number
+  baseDelay?: number
+  timeout?: number
+  retryOn?: (response: Response) => boolean
+}
+
+function shouldRetry(response: Response): boolean {
+  // Retry on 5xx errors or network errors
+  return response.status >= 500 || response.status === 429
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit = {},
+  retryOptions: RetryOptions = {}
+): Promise<Response> {
+  const {
+    retries = MAX_RETRIES,
+    baseDelay = BASE_DELAY,
+    timeout = DEFAULT_TIMEOUT,
+    retryOn = shouldRetry,
+  } = retryOptions
+
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      // If successful or shouldn't retry, return
+      if (!retryOn(response) || attempt === retries) {
+        return response
+      }
+
+      // Wait before retrying
+      const delay = baseDelay * Math.pow(2, attempt)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      lastError = new Error(`HTTP ${response.status}: ${response.statusText}`)
+    } catch (err) {
+      clearTimeout(timeoutId)
+      lastError = err instanceof Error ? err : new Error(String(err))
+
+      // Don't retry on abort
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw err
+      }
+
+      // If last attempt, throw
+      if (attempt === retries) {
+        throw lastError
+      }
+
+      // Wait before retrying
+      const delay = baseDelay * Math.pow(2, attempt)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError || new Error("Max retries exceeded")
+}
+
 async function getHeaders(includeContentType = true): Promise<Record<string, string>> {
   const headers: Record<string, string> = {}
   if (includeContentType) headers["Content-Type"] = "application/json"
@@ -109,9 +183,10 @@ export interface DatasetsListResponse {
   total: number
 }
 
-export async function listDatasets(page = 1, limit = 20): Promise<DatasetsListResponse> {
+export async function listDatasets(page = 1, limit = 20, signal?: AbortSignal): Promise<DatasetsListResponse> {
   const response = await fetch(`${API_BASE}/data?page=${page}&limit=${limit}`, {
     headers: await getHeaders(false),
+    signal,
   })
   if (!response.ok) throw new Error("Failed to fetch datasets")
   return response.json()
@@ -175,10 +250,25 @@ export async function uploadCsvDataset(
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(JSON.parse(xhr.responseText))
+        try {
+          resolve(JSON.parse(xhr.responseText))
+        } catch {
+          reject(new Error("Invalid JSON response from server"))
+        }
       } else {
-        const error = JSON.parse(xhr.responseText).detail || "Upload failed"
-        reject(new Error(error))
+        let errorMessage = "Upload failed"
+        try {
+          const errorData = JSON.parse(xhr.responseText)
+          errorMessage = errorData.detail || errorData.message || errorMessage
+        } catch {
+          // Non-JSON response, use default message
+          if (xhr.status >= 400 && xhr.status < 500) {
+            errorMessage = `Client error: ${xhr.status}`
+          } else if (xhr.status >= 500) {
+            errorMessage = `Server error: ${xhr.status}`
+          }
+        }
+        reject(new Error(errorMessage))
       }
     }
 
@@ -227,9 +317,10 @@ export async function submitNLQuery(request: NLQueryRequest): Promise<NLQueryRes
   return response.json()
 }
 
-export async function getQueryHistory(userId: string, limit = 50): Promise<NLQueryResult[]> {
+export async function getQueryHistory(userId: string, limit = 50, signal?: AbortSignal): Promise<NLQueryResult[]> {
   const response = await fetch(`${API_BASE}/nl/history?user_id=${userId}&limit=${limit}`, {
     headers: await getHeaders(false),
+    signal,
   })
   if (!response.ok) throw new Error("Failed to fetch query history")
   const data = await response.json()
@@ -285,7 +376,8 @@ export interface AnomalyThreshold {
 }
 
 export async function listAnomalies(
-  filters?: { dataset_id?: string; status?: string; severity?: string }
+  filters?: { dataset_id?: string; status?: string; severity?: string },
+  signal?: AbortSignal
 ): Promise<Anomaly[]> {
   const params = new URLSearchParams()
   if (filters?.dataset_id) params.set("dataset_id", filters.dataset_id)
@@ -293,6 +385,7 @@ export async function listAnomalies(
   if (filters?.severity) params.set("severity", filters.severity)
   const response = await fetch(`${API_BASE}/anomalies?${params}`, {
     headers: await getHeaders(false),
+    signal,
   })
   if (!response.ok) throw new Error("Failed to fetch anomalies")
   return response.json()
@@ -311,10 +404,10 @@ export async function updateAnomaly(
   return response.json()
 }
 
-export async function getAnomalyNotifications(unreadOnly = false): Promise<AnomalyNotification[]> {
+export async function getAnomalyNotifications(unreadOnly = false, signal?: AbortSignal): Promise<AnomalyNotification[]> {
   const response = await fetch(
     `${API_BASE}/anomalies/notifications?unread_only=${unreadOnly}`,
-    { headers: await getHeaders(false) }
+    { headers: await getHeaders(false), signal }
   )
   if (!response.ok) throw new Error("Failed to fetch notifications")
   return response.json()
@@ -372,9 +465,10 @@ export async function createForecast(request: ForecastRequest): Promise<Forecast
   return response.json()
 }
 
-export async function getForecast(forecastId: string): Promise<ForecastResult> {
+export async function getForecast(forecastId: string, signal?: AbortSignal): Promise<ForecastResult> {
   const response = await fetch(`${API_BASE}/ml/forecast/${forecastId}`, {
     headers: await getHeaders(false),
+    signal,
   })
   if (!response.ok) throw new Error("Failed to fetch forecast")
   return response.json()
@@ -433,12 +527,14 @@ export async function listReportTemplates(userId: string): Promise<ReportTemplat
 
 export async function listScheduledReports(
   userId: string,
-  isActive?: boolean
+  isActive?: boolean,
+  signal?: AbortSignal
 ): Promise<ScheduledReport[]> {
   const params = new URLSearchParams({ user_id: userId })
   if (isActive !== undefined) params.set("is_active", String(isActive))
   const response = await fetch(`${API_BASE}/reports/scheduled?${params}`, {
     headers: await getHeaders(false),
+    signal,
   })
   if (!response.ok) throw new Error("Failed to fetch scheduled reports")
   return response.json()

@@ -30,6 +30,8 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
   name = "${var.project_name}-${var.environment}-secrets"
   role = aws_iam_role.ecs_execution.id
 
+  # SECURITY: Restrict to specific secret ARNs instead of "*"
+  # Only allow access to the secrets created by this Terraform
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -39,7 +41,11 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
           "secretsmanager:GetSecretValue",
           "kms:Decrypt"
         ]
-        Resource = "*"
+        # Restrict to specific secret ARNs for least privilege
+        Resource = [
+          aws_secretsmanager_secret.db_password.arn,
+          aws_secretsmanager_secret.app_secrets.arn
+        ]
       }
     ]
   })
@@ -88,4 +94,31 @@ resource "aws_iam_role_policy" "ecs_task_s3" {
       }
     ]
   })
+}
+
+# IAM role for ECS autoscaling
+resource "aws_iam_role" "ecs_autoscaling" {
+  name = "${var.project_name}-${var.environment}-ecs-autoscaling-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "application-autoscaling.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-ecs-autoscaling-role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_autoscaling" {
+  role       = aws_iam_role.ecs_autoscaling.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2AutoScalingServiceRolePolicy"
 }

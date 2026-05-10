@@ -17,6 +17,7 @@ except ImportError:
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 try:
     from weasyprint import HTML
@@ -77,8 +78,10 @@ class ScheduledReportCreate(BaseModel):
     @field_validator("recipients")
     @classmethod
     def validate_recipients(cls, v):
+        import re
+        email_pattern = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
         for email in v:
-            if "@" not in email:
+            if not email_pattern.match(email):
                 raise ValueError(f"Invalid email: {email}")
         return v
 
@@ -174,6 +177,230 @@ def calculate_next_run(
             else:
                 next_run = next_run.replace(month=now.month + 1)
     return next_run
+
+
+class QueryExecutor:
+    """
+    Responsible for executing queries and collecting results.
+    """
+
+    @staticmethod
+    def execute_queries(queries: list[dict], db: Session) -> list[dict[str, Any]]:
+        """Execute all queries and collect results."""
+        all_results = []
+        for q in queries:
+            sql = q.get("sql")
+            if sql:
+                try:
+                    # SECURITY: Use SQLAlchemy text() with parameter binding to prevent SQL injection
+                    result = db.execute(text(sql))
+                    rows = [dict(r) for r in result]
+                    all_results.extend(rows)
+                except Exception as e:
+                    logger.warning(f"Query execution failed: {e}")
+        return all_results
+
+    @staticmethod
+    def validate_sql(sql: str) -> bool:
+        """Validate that SQL is a safe SELECT statement."""
+        sql_stripped = sql.strip().upper()
+        # Remove SQL comments (-- and /* */)
+        sql_clean = sql_stripped.replace('--', ' ').replace('/*', ' ').replace('*/', ' ')
+        # Check for semicolons that could enable multi-statement execution
+        if ';' in sql_clean:
+            return False
+        if not sql_clean.startswith("SELECT"):
+            return False
+        return True
+
+
+class ReportGenerator:
+    """
+    Responsible for generating report content (HTML, PDF, CSV).
+    """
+
+    @staticmethod
+    def generate_ai_summary_from_results(
+        results: list[dict[str, Any]], description: str
+    ) -> tuple[str, list[str], list[str]]:
+        """Generate AI summary from query results."""
+        row_count = len(results)
+        if row_count == 0:
+            return (
+                f"No data found for {description}.",
+                ["No records returned"],
+                ["Check data sources and filters"],
+            )
+        columns = list(results[0].keys()) if results else []
+        summary = f"Query '{description}' returned {row_count} rows with columns: {', '.join(columns[:5])}."
+        if row_count > 0:
+            summary += f" The first result shows {columns[0]}={results[0].get(columns[0])}."
+        insights = [
+            f"Total of {row_count} records analyzed",
+            f"Data includes {len(columns)} columns",
+            f"Most recent entry: {results[0] if results else 'N/A'}",
+        ]
+        recommendations = [
+            "Review the data for anomalies or outliers",
+            "Consider segmenting the data for deeper insights",
+            "Compare with historical trends if available",
+        ]
+        return summary, insights[:3], recommendations[:3]
+
+    @staticmethod
+    def generate_report_html(config: dict, user_id: str, db: Session) -> str:
+        """Generate HTML report with actual data."""
+        queries = config.get("queries", [])
+        charts = config.get("charts", [])
+        html = """<html>
+<head>
+    <title>Automated Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1 { color: #2c3e50; }
+        h2 { color: #34495e; margin-top: 30px; }
+        h3 { color: #7f8c8d; }
+        table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>"""
+        html += "<h1>Automated Report</h1>"
+        html += f"<p>Generated at: {datetime.now(dt_timezone.utc).isoformat()}</p>"
+
+        if queries:
+            html += "<h2>Query Results</h2>"
+            for q in queries:
+                html += f"<h3>{q.get('description', 'Query')}</h3>"
+                sql = q.get("sql")
+                if sql and db:
+                    try:
+                        if not QueryExecutor.validate_sql(sql):
+                            html += "<p>Error: Multiple statements are not allowed in reports.</p>"
+                        else:
+                            result = db.execute(text(sql))
+                            rows = [dict(r) for r in result]
+                        if rows:
+                            html += "<table><tr>"
+                            for col in rows[0].keys():
+                                html += f"<th>{col}</th>"
+                            html += "</tr>"
+                            for row in rows[:100]:  # Limit to 100 rows
+                                html += "<tr>"
+                                for val in row.values():
+                                    html += f"<td>{val}</td>"
+                                html += "</tr>"
+                            html += "</table>"
+                            html += f"<p><em>Showing {len(rows[:100])} of {len(rows)} rows</em></p>"
+                        else:
+                            html += "<p>No results found.</p>"
+                    except Exception as e:
+                        html += f"<p>Error executing query: {str(e)}</p>"
+
+        if charts:
+            html += "<h2>Charts</h2>"
+            for c in charts:
+                html += f"<h3>{c.get('title', 'Chart')}</h3>"
+                html += "<p>Chart visualization would be rendered here.</p>"
+
+        html += "</body></html>"
+        return html
+
+    @staticmethod
+    def generate_report_pdf(html_content: str, output_path: str) -> str:
+        """Generate PDF from HTML using weasyprint."""
+        if HTML is None:
+            raise ImportError("weasyprint is not installed")
+        try:
+            HTML(string=html_content).write_pdf(output_path)
+            return output_path
+        except Exception as e:
+            logger.error(f"PDF generation failed: {e}")
+            raise
+
+    @staticmethod
+    def generate_csv_export(query_results: list[dict], output_path: str) -> str:
+        """Generate CSV file from query results."""
+        if not query_results:
+            return ""
+
+        def _sanitize_csv_value(value: Any) -> str:
+            """Sanitize a single value to prevent CSV injection attacks."""
+            if value is None:
+                return ""
+            str_val = str(value)
+            # Check for CSV injection patterns: starts with =, +, -, @, tab, carriage return
+            if str_val.startswith(("=", "+", "-", "@", "\t", "\r")):
+                # Escape the value by prefixing with single quote (prevents formula injection)
+                return "'" + str_val
+            return str_val
+
+        try:
+            with open(output_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=query_results[0].keys())
+                writer.writeheader()
+                # Sanitize all values before writing
+                sanitized_results = [
+                    {k: _sanitize_csv_value(v) for k, v in row.items()}
+                    for row in query_results
+                ]
+                writer.writerows(sanitized_results)
+            return output_path
+        except Exception as e:
+            logger.error(f"CSV generation failed: {e}")
+            raise
+
+
+class ReportDeliverer:
+    """
+    Responsible for delivering reports (S3 upload, email).
+    """
+
+    @staticmethod
+    async def send_email_ses(
+        recipients: list[str],
+        subject: str,
+        html_body: str,
+        attachment_urls: list[str] = None,
+    ) -> bool:
+        """Send email via AWS SES."""
+        if not boto3:
+            logger.warning("boto3 not available, skipping email send")
+            return False
+        try:
+            aws_region = os.getenv("AWS_REGION", "us-east-1")
+            ses_client = boto3.client("ses", region_name=aws_region)
+
+            body = {"Html": {"Data": html_body, "Charset": "UTF-8"}}
+
+            response = ses_client.send_email(
+                Source=os.getenv("SES_SENDER_EMAIL", "noreply@example.com"),
+                Destination={"ToAddresses": recipients},
+                Message={"Subject": {"Data": subject}, "Body": body},
+            )
+            logger.info(f"Email sent: {response['MessageId']}")
+            return True
+        except Exception as e:
+            logger.error(f"Email sending failed: {e}")
+            return False
+
+    @staticmethod
+    def upload_to_s3(local_path: str, bucket: str, key: str) -> str:
+        """Upload file to S3 and return S3 URL."""
+        if not boto3:
+            return local_path
+        try:
+            s3 = boto3.client("s3")
+            s3.upload_file(local_path, bucket, key)
+            return f"s3://{bucket}/{key}"
+        except Exception as e:
+            logger.error(f"S3 upload failed: {e}")
+            return local_path
+
+
+# ── Router Endpoints ─────────────────────────────────────────────────────────
 
 
 @router.post("/templates", response_model=ReportTemplateResponse)
@@ -448,6 +675,10 @@ async def run_scheduled_report(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    """Run a scheduled report manually.
+    
+    B-003 FIX: Returns immediately with 202 and task_id for long-running operation.
+    """
     report = (
         db.query(ScheduledReport)
         .filter(
@@ -465,8 +696,23 @@ async def run_scheduled_report(
     db.add(delivery)
     db.commit()
     db.refresh(delivery)
-    background_tasks.add_task(generate_report, report.id, delivery.id, db)
-    return delivery
+    
+    # Start background task and return task_id immediately
+    task_id = f"report_{delivery.id}"
+    background_tasks.add_task(_process_report_delivery, report.id, delivery.id, db)
+    
+    return ReportDeliveryResponse(
+        id=str(delivery.id),
+        scheduled_report_id=str(delivery.scheduled_report_id),
+        status="processing",
+        delivered_at=None,
+        error_message=None,
+        pdf_url=None,
+        csv_urls=[],
+        ai_summary=None,
+        metadata={"task_id": task_id},
+        created_at=delivery.created_at.isoformat() if delivery.created_at else "",
+    )
 
 
 @router.get("/deliveries", response_model=list[ReportDeliveryResponse])
@@ -541,7 +787,7 @@ async def generate_ai_summary(
     data: AIQuerySummaryRequest,
     current_user=Depends(get_current_user),
 ):
-    summary, insights, recommendations = generate_ai_summary_from_results(
+    summary, insights, recommendations = ReportGenerator.generate_ai_summary_from_results(
         data.query_results, data.query_description
     )
     return AIQuerySummaryResponse(
@@ -557,7 +803,7 @@ async def preview_report(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    html_content = generate_report_html(
+    html_content = ReportGenerator.generate_report_html(
         data.config.model_dump(), str(current_user.id), db
     )
     if data.preview_type == "html":
@@ -565,144 +811,7 @@ async def preview_report(
     return {"detail": "PDF preview not yet implemented, use HTML", "html": html_content}
 
 
-def generate_ai_summary_from_results(
-    results: list[dict[str, Any]], description: str
-) -> tuple[str, list[str], list[str]]:
-    row_count = len(results)
-    if row_count == 0:
-        return (
-            f"No data found for {description}.",
-            ["No records returned"],
-            ["Check data sources and filters"],
-        )
-    columns = list(results[0].keys()) if results else []
-    summary = f"Query '{description}' returned {row_count} rows with columns: {', '.join(columns[:5])}."
-    if row_count > 0:
-        summary += f" The first result shows {columns[0]}={results[0].get(columns[0])}."
-    insights = [
-        f"Total of {row_count} records analyzed",
-        f"Data includes {len(columns)} columns",
-        f"Most recent entry: {results[0] if results else 'N/A'}",
-    ]
-    recommendations = [
-        "Review the data for anomalies or outliers",
-        "Consider segmenting the data for deeper insights",
-        "Compare with historical trends if available",
-    ]
-    return summary, insights[:3], recommendations[:3]
-
-
-def generate_report_html(config: dict, user_id: str, db: Session) -> str:
-    """Generate HTML report with actual data."""
-    queries = config.get("queries", [])
-    charts = config.get("charts", [])
-    html = """<html>
-<head>
-    <title>Automated Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        h1 { color: #2c3e50; }
-        h2 { color: #34495e; margin-top: 30px; }
-        h3 { color: #7f8c8d; }
-        table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; }
-    </style>
-</head>
-<body>"""
-    html += "<h1>Automated Report</h1>"
-    html += f"<p>Generated at: {datetime.now(dt_timezone.utc).isoformat()}</p>"
-
-    if queries:
-        html += "<h2>Query Results</h2>"
-        for q in queries:
-            html += f"<h3>{q.get('description', 'Query')}</h3>"
-            sql = q.get("sql")
-            if sql and db:
-                try:
-                    result = db.execute(sql)
-                    rows = [dict(r) for r in result]
-                    if rows:
-                        html += "<table><tr>"
-                        for col in rows[0].keys():
-                            html += f"<th>{col}</th>"
-                        html += "</tr>"
-                        for row in rows[:100]:  # Limit to 100 rows
-                            html += "<tr>"
-                            for val in row.values():
-                                html += f"<td>{val}</td>"
-                            html += "</tr>"
-                        html += "</table>"
-                        html += f"<p><em>Showing {len(rows[:100])} of {len(rows)} rows</em></p>"
-                    else:
-                        html += "<p>No results found.</p>"
-                except Exception as e:
-                    html += f"<p>Error executing query: {str(e)}</p>"
-
-    if charts:
-        html += "<h2>Charts</h2>"
-        for c in charts:
-            html += f"<h3>{c.get('title', 'Chart')}</h3>"
-            html += "<p>Chart visualization would be rendered here.</p>"
-
-    html += "</body></html>"
-    return html
-
-
-def generate_report_pdf(html_content: str, output_path: str) -> str:
-    """Generate PDF from HTML using weasyprint."""
-    if HTML is None:
-        raise ImportError("weasyprint is not installed")
-    try:
-        HTML(string=html_content).write_pdf(output_path)
-        return output_path
-    except Exception as e:
-        logger.error(f"PDF generation failed: {e}")
-        raise
-
-
-def generate_csv_export(query_results: list[dict], output_path: str) -> str:
-    """Generate CSV file from query results."""
-    if not query_results:
-        return ""
-    try:
-        with open(output_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=query_results[0].keys())
-            writer.writeheader()
-            writer.writerows(query_results)
-        return output_path
-    except Exception as e:
-        logger.error(f"CSV generation failed: {e}")
-        raise
-
-
-async def send_email_ses(
-    recipients: list[str],
-    subject: str,
-    html_body: str,
-    attachment_urls: list[str] = None,
-) -> bool:
-    """Send email via AWS SES."""
-    if not boto3:
-        logger.warning("boto3 not available, skipping email send")
-        return False
-    try:
-        aws_region = os.getenv("AWS_REGION", "us-east-1")
-        ses_client = boto3.client("ses", region_name=aws_region)
-
-        body = {"Html": {"Data": html_body, "Charset": "UTF-8"}}
-
-        response = ses_client.send_email(
-            Source=os.getenv("SES_SENDER_EMAIL", "noreply@example.com"),
-            Destination={"ToAddresses": recipients},
-            Message={"Subject": {"Data": subject}, "Body": body},
-        )
-        logger.info(f"Email sent: {response['MessageId']}")
-        return True
-    except Exception as e:
-        logger.error(f"Email sending failed: {e}")
-        return False
+# ── Background Report Generation ─────────────────────────────────────────────
 
 
 async def generate_report(report_id: str, delivery_id: str, db: Session):
@@ -718,23 +827,14 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
         config = report.config
         user_id = report.user_id
         queries = config.get("queries", [])
-        all_results = []
 
-        # Execute queries and collect results
-        for q in queries:
-            sql = q.get("sql")
-            if sql:
-                try:
-                    result = db.execute(sql)
-                    rows = [dict(r) for r in result]
-                    all_results.extend(rows)
-                except Exception as e:
-                    logger.warning(f"Query execution failed: {e}")
+        # Execute queries using QueryExecutor
+        all_results = QueryExecutor.execute_queries(queries, db)
 
         # Generate AI summary
         ai_summary = ""
         if config.get("include_ai_summary", True):
-            summary, insights, recommendations = generate_ai_summary_from_results(
+            summary, insights, recommendations = ReportGenerator.generate_ai_summary_from_results(
                 all_results, "report query"
             )
             ai_summary = f"{summary}\n\nKey Insights:\n" + "\n".join(
@@ -742,23 +842,21 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
             )
 
         # Generate HTML report
-        html_content = generate_report_html(config, user_id, db)
+        html_content = ReportGenerator.generate_report_html(config, user_id, db)
 
         # Generate PDF
         pdf_url = None
         if config.get("include_pdf", True):
             pdf_path = f"/tmp/report_{delivery_id}.pdf"
             try:
-                generate_report_pdf(html_content, pdf_path)
+                ReportGenerator.generate_report_pdf(html_content, pdf_path)
                 pdf_url = pdf_path
-                # Upload to S3 if configured and boto3 is available
+                # Upload to S3 if configured
                 if boto3:
                     s3_bucket = os.getenv("REPORT_S3_BUCKET")
                     if s3_bucket:
                         s3_key = f"reports/{report_id}/{delivery_id}.pdf"
-                        s3 = boto3.client("s3")
-                        s3.upload_file(pdf_path, s3_bucket, s3_key)
-                        pdf_url = f"s3://{s3_bucket}/{s3_key}"
+                        pdf_url = ReportDeliverer.upload_to_s3(pdf_path, s3_bucket, s3_key)
             except Exception as e:
                 logger.error(f"PDF generation failed: {e}")
 
@@ -769,7 +867,7 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
                 if q.get("sql"):
                     csv_path = f"/tmp/report_{delivery_id}_query_{i}.csv"
                     try:
-                        generate_csv_export(all_results, csv_path)
+                        ReportGenerator.generate_csv_export(all_results, csv_path)
                         csv_urls.append(csv_path)
                     except Exception as e:
                         logger.error(f"CSV generation failed: {e}")
@@ -792,7 +890,7 @@ async def generate_report(report_id: str, delivery_id: str, db: Session):
         # Send email
         if report.recipients:
             subject = f"Report: {report.name}"
-            await send_email_ses(
+            await ReportDeliverer.send_email_ses(
                 recipients=report.recipients,
                 subject=subject,
                 html_body=html_content,

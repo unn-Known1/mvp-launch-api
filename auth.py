@@ -15,9 +15,24 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import DEFAULT_ROLES, Role, TokenBlacklist, User
+from models import DEFAULT_ROLES, Role, TokenBlacklist, User, ApiKey
+import hashlib
+import hmac
 
-SECRET_KEY = os.environ["JWT_SECRET_KEY"]
+# SECURITY: Validate that JWT_SECRET_KEY is set in production
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment == "production":
+        raise ValueError(
+            "JWT_SECRET_KEY environment variable is required in production. "
+            "Please set a secure secret key before starting the application."
+        )
+    # In development, provide a clear error instead of silent fallback
+    raise ValueError(
+        "JWT_SECRET_KEY environment variable is not set. "
+        "Please set it in your .env file or environment."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
@@ -168,11 +183,75 @@ def blacklist_token(
         )
         db.add(entry)
         db.commit()
-    cleanup_expired_blacklist(db)
 
 
 def cleanup_expired_blacklist(db: Session) -> None:
+    # NEW-014 FIX: Ensure timezone-aware datetime comparison
+    # Convert naive datetime from DB to timezone-aware for comparison
+    now_aware = datetime.now(timezone.utc)
     db.query(TokenBlacklist).filter(
-        TokenBlacklist.expires_at <= datetime.now(timezone.utc)
+        TokenBlacklist.expires_at <= now_aware
     ).delete()
     db.commit()
+
+
+# B-006: API Key Authentication Support
+def verify_api_key(api_key: str, db: Session) -> Optional[User]:
+    """Verify an API key and return the associated user.
+
+    B-006 FIX: Added API key authentication support.
+    API keys are stored as SHA-256 hashes for security.
+    """
+    if not api_key or not api_key.startswith("mk_"):
+        return None
+
+    # Hash the provided API key to compare with stored hash
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+    # Find active API key with matching hash
+    api_key_record = (
+        db.query(ApiKey)
+        .filter(
+            ApiKey.key_hash == key_hash,
+            ApiKey.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if not api_key_record:
+        return None
+
+    # Check expiration
+    if api_key_record.expires_at and api_key_record.expires_at <= datetime.now(timezone.utc):
+        return None
+
+    # Update last used timestamp
+    api_key_record.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Return the user
+    return db.query(User).filter(User.id == api_key_record.user_id, User.is_active.is_(True)).first()
+
+
+def create_api_key(user_id: str, name: str, db: Session, expires_at: Optional[datetime] = None) -> tuple[str, str]:
+    """Create a new API key for a user. Returns (key_id, full_key).
+    
+    The full_key should be shown to the user once - it cannot be recovered.
+    """
+    import secrets
+    
+    # Generate a secure random key
+    full_key = f"mk_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(full_key.encode()).hexdigest()
+    
+    api_key = ApiKey(
+        user_id=user_id,
+        key_hash=key_hash,
+        name=name,
+        expires_at=expires_at,
+    )
+    db.add(api_key)
+    db.commit()
+    
+    # Return the full key (only time it's visible) and key ID
+    return str(api_key.id), full_key

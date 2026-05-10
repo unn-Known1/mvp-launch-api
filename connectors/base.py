@@ -10,6 +10,53 @@ from typing import Any, Optional
 from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
 
+# D-001: Import pybreaker for circuit breaker pattern
+try:
+    import pybreaker
+    HAS_PYBREAKER = True
+except ImportError:
+    HAS_PYBREAKER = False
+
+# D-002: Import tenacity for retry policies
+try:
+    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    HAS_TENACITY = True
+except ImportError:
+    HAS_TENACITY = False
+
+
+def _get_redis_client():
+    """Get Redis client for circuit breaker state storage."""
+    try:
+        import redis
+        redis_url = "redis://localhost:6379/0"
+        return redis.from_url(redis_url)
+    except Exception:
+        return None
+
+
+# D-001: Configure circuit breaker
+if HAS_PYBREAKER:
+    _redis_client = _get_redis_client()
+    # Use Redis as fallback state storage; if unavailable, uses in-memory
+    if _redis_client:
+        circuit_breaker_storage = pybreaker.CircuitRedisStorage(
+            redis_client=_redis_client,
+            expire_time=60  # State expires after 60 seconds
+        )
+    else:
+        circuit_breaker_storage = pybreaker.CircuitMemoryStorage()
+
+    # Circuit breaker configuration
+    EXTERNAL_SERVICE_CB = pybreaker.CircuitBreaker(
+        fail_max=5,              # Open after 5 consecutive failures
+        reset_timeout=30,        # Try to close after 30 seconds
+        state_storage=circuit_breaker_storage,
+        listeners=[]             # Could add listeners for logging
+    )
+else:
+    EXTERNAL_SERVICE_CB = None
+
 
 @dataclass
 class DataSourceConfig:
@@ -31,12 +78,30 @@ class DataSourceConfig:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+    def verify_password(self, plaintext: str) -> bool:
+        """Verify if plaintext password matches the encrypted stored password.
+
+        NEW-008 FIX: Never expose plaintext password through properties.
+        Use this comparison method instead for verification.
+        """
+        from connectors.encryption import decrypt_value
+        try:
+            decrypted = decrypt_value(self.password_encrypted)
+            return decrypted == plaintext
+        except Exception:
+            return False
+
     @property
     def password(self) -> str:
-        """Return decrypted password."""
-        from connectors.encryption import decrypt_value
+        """DEPRECATED: Never expose plaintext password.
 
-        return decrypt_value(self.password_encrypted)
+        NEW-008 FIX: Password can no longer be retrieved in plaintext.
+        Use verify_password() for comparison instead.
+        """
+        raise AttributeError(
+            "Password cannot be retrieved in plaintext for security reasons. "
+            "Use verify_password() method for password verification."
+        )
 
     @password.setter
     def password(self, plaintext: str):
@@ -68,6 +133,19 @@ class ConnectionTestResult:
     server_version: Optional[str] = None
 
 
+# D-002: Default retry decorator for transient failures
+def _default_retry_decorator(func):
+    """Decorator to retry on transient failures with exponential backoff."""
+    if HAS_TENACITY:
+        return retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
+            reraise=True
+        )(func)
+    return func
+
+
 class BaseConnector(ABC):
     """Abstract base class for database connectors."""
 
@@ -76,7 +154,8 @@ class BaseConnector(ABC):
         self._engine = None
 
     def _create_engine(self):
-        """Create SQLAlchemy engine with connection pooling."""
+        """Create SQLAlchemy engine with connection pooling and query timeout."""
+        from sqlalchemy import event
         return create_engine(
             self.config.to_connection_url(),
             poolclass=QueuePool,
@@ -84,6 +163,9 @@ class BaseConnector(ABC):
             max_overflow=self.config.connection_max_overflow,
             pool_timeout=self.config.connection_timeout,
             pool_pre_ping=True,
+            connect_args={
+                "options": "-c statement_timeout=30000"  # 30 second timeout
+            },
         )
 
     @property

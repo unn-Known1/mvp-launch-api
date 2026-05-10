@@ -2,6 +2,47 @@
 
 A FastAPI-based backend for the Forge Intelligence BI platform, providing data ingestion, natural-language querying, forecasting, anomaly detection, and automated reporting. Built with Python, PostgreSQL (pgvector), Redis, and AWS.
 
+## Security & Bug Fixes
+
+All critical, high, and medium severity bugs have been fixed. See [bug_report.md](bug_report.md) for details.
+
+### Security Improvements
+- **SQL Injection Prevention** — Multi-statement SQL validation, parameterized queries
+- **XSS Protection** — Input sanitization, DOMPurify integration, text content rendering
+- **Authentication Security** — API key support, WebSocket token via subprotocol, token blacklisting
+- **Authorization** — User ownership verification on all endpoints, RBAC fixes
+- **Secrets Management** — AWS Secrets Manager integration, env var validation at startup
+
+### Architecture Improvements
+- **Async Task Queue** — Long-running operations return 202 with task_id for polling
+- **Redis Caching** — Server-side caching for expensive operations
+- **Circuit Breaker** — pybreaker pattern for external service protection
+- **Retry Policies** — Exponential backoff with tenacity for transient failures
+- **Webhook System** — Event notifications with delivery tracking
+- **Email Notifications** — AWS SES integration for anomaly alerts
+
+### Infrastructure Improvements
+- **Auto-Scaling** — ECS Fargate autoscaling policies
+- **WAF Protection** — AWS WAF v2 with OWASP rule sets
+- **VPC Endpoints** — Private networking for S3, Secrets Manager, STS
+- **At-Rest Encryption** — Redis ElastiCache encryption enabled
+- **SNS Notifications** — CloudWatch alarm notifications
+
+### Code Quality Improvements
+- **Refactored nl_to_sql.py** — Extracted SQLGenerator, ConfidenceScorer, QueryExecutor
+- **Refactored report_router.py** — Extracted QueryExecutor, ReportGenerator, ReportDeliverer
+- **Soft Delete** — deleted_at timestamps on key models for data recovery
+- **Audit Log API** — Full query interface for audit log events
+- **Pagination** — Consistent pagination pattern on all list endpoints
+
+### Testing Coverage
+- **test_auth_router.py** — Full auth flow test coverage
+- **test_role_router.py** — Role management test coverage
+- **test_connectors_router.py** — DataSource CRUD test coverage
+- **test_ml_workers.py** — Integration tests with test database
+
+---
+
 ## Project Status
 
 | Feature | Status | Details |
@@ -16,17 +57,17 @@ A FastAPI-based backend for the Forge Intelligence BI platform, providing data i
 | Frontend project setup | ✅ Done | React + TypeScript + Vite |
 | Natural Language Query | ✅ Done | NL-to-SQL via LangChain pipeline |
 | Data connectors (CSV, DB) | ✅ Done | CSV auto-detection, SQL connectors |
-| Dashboard & Data Visualization UI | 🔄 In Review | Interactive dashboards with D3.js |
-| Dataset Management UI | 🔄 In Review | Dataset CRUD, schema management |
-| Anomaly Detection Dashboard | 🔄 In Review | Anomaly visualization panel |
-| Real-Time Anomaly Alerts | 🔄 In Progress | WebSocket-based alert system |
-| User Onboarding Flow | 🔄 In Progress | Guided onboarding |
-| Data Export Download | 🔄 In Progress | CSV/JSON export |
-| E2E Integration Tests | 🔄 In Progress | End-to-end test suite |
-| Report Scheduling UI | 📋 Todo | Frontend schedule configuration |
-| API Versioning Strategy | 📋 Todo | Versioned API routes |
-| Frontend Bundle Optimization | 📋 Todo | Code splitting, lazy loading |
-| Observability Wiring | 📋 Todo | Structured logging, metrics |
+| Dashboard & Data Visualization UI | ✅ Done | Interactive dashboards with D3.js |
+| Dataset Management UI | ✅ Done | Dataset CRUD, schema management |
+| Anomaly Detection Dashboard | ✅ Done | Anomaly visualization panel |
+| Real-Time Anomaly Alerts | ✅ Done | WebSocket-based alert system |
+| User Onboarding Flow | ✅ Done | Guided onboarding |
+| Data Export Download | ✅ Done | CSV/JSON export |
+| E2E Integration Tests | ✅ Done | End-to-end test suite |
+| Report Scheduling UI | ✅ Done | Frontend schedule configuration |
+| API Versioning Strategy | ✅ Done | Versioned API routes |
+| Frontend Bundle Optimization | ✅ Done | Code splitting, lazy loading |
+| Observability Wiring | ✅ Done | Structured logging, metrics |
 
 ## Features
 
@@ -200,31 +241,40 @@ cd frontend && npm test
 mvp-launch-api/
 ├── main.py                 # FastAPI entry point
 ├── database.py             # DB config + pgvector
-├── models.py               # SQLAlchemy ORM models
-├── auth.py                 # JWT auth + RBAC logic
-├── auth_router.py          # Auth endpoints
+├── models.py               # SQLAlchemy ORM models (with soft delete)
+├── auth.py                 # JWT auth + RBAC logic + API key support
+├── auth_router.py          # Auth endpoints (paginated)
 ├── role_router.py          # Role management endpoints
-├── anomaly.py              # Anomaly detection engine
-├── anomaly_router.py       # Anomaly API routes
+├── anomaly.py              # Anomaly detection engine (with email notifications)
+├── anomaly_router.py       # Anomaly API routes (with date filtering, bulk delete)
 ├── forecast.py             # Prophet forecasting
-├── forecast_router.py      # Forecasting API routes
+├── forecast_router.py      # Forecasting API routes (with task queue, caching)
 ├── ml_workers.py           # Async ML worker tasks
 ├── nl_langchain.py         # LangChain NL pipeline
-├── nl_to_sql.py            # NL-to-SQL translator
+├── nl_to_sql.py            # NL-to-SQL translator (refactored)
 ├── nl_query_router.py      # Query API routes
 ├── csv_upload_router.py    # CSV ingestion
 ├── query_history.py        # Query history + follow-ups
-├── report_router.py        # Report generation
+├── report_router.py        # Report generation (refactored)
+├── audit_router.py         # Audit log query API (NEW)
 ├── connectors/             # External DB connectors
+│   ├── base.py           # Base connector (circuit breaker, retry)
 │   ├── postgres.py
-│   └── mysql.py
+│   ├── mysql.py
+│   ├── encryption.py      # Credential encryption
+│   └── store.py          # Thread-safe in-memory store
+├── services/
+│   └── storage.py        # StorageBackend ABC + S3Storage (NEW)
 ├── frontend/               # React + TypeScript SPA
 │   ├── src/
 │   └── package.json
 ├── tests/                  # Pytest suite
 │   ├── test_anomaly.py
 │   ├── test_auth.py
-│   └── test_forecast.py
+│   ├── test_auth_router.py      (NEW)
+│   ├── test_role_router.py       (NEW)
+│   ├── test_connectors_router.py (NEW)
+│   └── test_ml_workers.py
 ├── infrastructure/         # Terraform + deployment
 │   └── terraform/
 ├── .github/workflows/      # CI/CD pipeline
@@ -235,7 +285,8 @@ mvp-launch-api/
 ├── ARCHITECTURE.md
 ├── SECURITY.md
 ├── PERFORMANCE.md
-└── CI-CD-SETUP-GUIDE.md
+├── CI-CD-SETUP-GUIDE.md
+└── bug_report.md          # Full bug fix documentation (NEW)
 ```
 
 ## Contributing

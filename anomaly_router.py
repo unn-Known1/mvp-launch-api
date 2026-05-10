@@ -3,10 +3,11 @@ FastAPI router for anomaly detection endpoints.
 """
 
 from typing import Optional
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from anomaly import (
     detect_anomalies_for_metric,
@@ -15,13 +16,14 @@ from anomaly import (
 )
 from auth import get_current_user, decode_token
 from database import get_db
-from models import Anomaly, AnomalyNotification, AnomalyThreshold, Dataset
+from models import Anomaly, AnomalyNotification, AnomalyThreshold, Dataset, TokenBlacklist
 from ws_manager import manager as ws_manager
 
 router = APIRouter(prefix="/api/v1/anomalies", tags=["Anomaly Detection"])
 
 
 class ThresholdRequest(BaseModel):
+    dataset_id: str = Field(..., description="UUID of the dataset")
     metric_name: str = Field(..., min_length=1)
     z_score_threshold: int = Field(default=3, ge=1, le=10)
     iqr_multiplier: int = Field(default=3, ge=1, le=10)
@@ -86,12 +88,18 @@ def scan_for_anomalies(
     total = 0
     results = {}
     user_id = str(current_user.id)
+
+    # SECURITY: Filter datasets at database level to ensure proper authorization
+    # Only fetch datasets that belong to the current user
     query = db.query(Dataset).filter(
         Dataset.status == "ready", Dataset.user_id == current_user.id
     )
-    datasets = query.all()
+
+    # SECURITY: If dataset_id is provided, verify it belongs to the user at DB level
     if dataset_id:
-        datasets = [d for d in datasets if str(d.id) == dataset_id]
+        query = query.filter(Dataset.id == dataset_id)
+
+    datasets = query.all()
     for ds in datasets:
         count = 0
         if metric_name:
@@ -119,10 +127,12 @@ def list_anomalies(
     dataset_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None, pattern="^(flagged|investigated|dismissed)$"),
     severity: Optional[str] = Query(None, pattern="^(low|medium|high)$"),
+    from_date: Optional[datetime] = Query(None, description="Filter anomalies from this date (ISO format)"),
+    to_date: Optional[datetime] = Query(None, description="Filter anomalies up to this date (ISO format)"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """List anomalies with optional filters."""
+    """List anomalies with optional filters and date range."""
     query = db.query(Anomaly).join(Dataset).filter(Dataset.user_id == current_user.id)
     if dataset_id:
         query = query.filter(Anomaly.dataset_id == dataset_id)
@@ -130,6 +140,10 @@ def list_anomalies(
         query = query.filter(Anomaly.status == status)
     if severity:
         query = query.filter(Anomaly.severity == severity)
+    if from_date:
+        query = query.filter(Anomaly.timestamp >= from_date)
+    if to_date:
+        query = query.filter(Anomaly.timestamp <= to_date)
     anomalies = query.order_by(Anomaly.timestamp.desc()).limit(100).all()
     return [
         AnomalyResponse(
@@ -160,6 +174,13 @@ def update_anomaly(
     current_user=Depends(get_current_user),
 ):
     """Mark an anomaly as investigated or dismissed."""
+    # Validate UUID format
+    from uuid import UUID
+    try:
+        UUID(anomaly_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid anomaly ID format")
+
     anomaly = update_anomaly_status(
         db, anomaly_id, req.status, str(current_user.id), req.notes
     )
@@ -183,6 +204,55 @@ def update_anomaly(
     )
 
 
+class BulkDeleteRequest(BaseModel):
+    anomaly_ids: list[str]
+
+
+class BulkDeleteResponse(BaseModel):
+    deleted_count: int
+    failed_ids: list[str]
+
+
+@router.delete("/bulk", response_model=BulkDeleteResponse)
+def bulk_delete_anomalies(
+    req: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Bulk delete anomalies by IDs. Only deletes anomalies owned by the current user."""
+    from uuid import UUID
+
+    deleted_count = 0
+    failed_ids = []
+
+    for anomaly_id in req.anomaly_ids:
+        try:
+            UUID(anomaly_id)  # Validate UUID format
+        except (ValueError, AttributeError):
+            failed_ids.append(anomaly_id)
+            continue
+
+        # Find anomaly owned by current user
+        anomaly = (
+            db.query(Anomaly)
+            .join(Dataset)
+            .filter(
+                Anomaly.id == anomaly_id,
+                Dataset.user_id == current_user.id
+            )
+            .first()
+        )
+
+        if anomaly:
+            db.delete(anomaly)
+            deleted_count += 1
+        else:
+            failed_ids.append(anomaly_id)
+
+    db.commit()
+    return BulkDeleteResponse(deleted_count=deleted_count, failed_ids=failed_ids)
+
+
 @router.get("/notifications", response_model=list[NotificationResponse])
 def get_notifications(
     unread_only: bool = Query(False),
@@ -190,9 +260,9 @@ def get_notifications(
     current_user=Depends(get_current_user),
 ):
     """Get anomaly notifications for the current user."""
-    query = db.query(AnomalyNotification).filter(
-        AnomalyNotification.user_id == current_user.id
-    )
+    query = db.query(AnomalyNotification).options(
+        joinedload(AnomalyNotification.anomaly)
+    ).filter(AnomalyNotification.user_id == current_user.id)
     if unread_only:
         query = query.filter(AnomalyNotification.read.is_(False))
     notifications = (
@@ -260,10 +330,16 @@ def create_or_update_threshold(
     current_user=Depends(get_current_user),
 ):
     """Set anomaly detection sensitivity threshold for a metric."""
-    dataset_id = None
+    dataset = (
+        db.query(Dataset)
+        .filter(Dataset.id == req.dataset_id, Dataset.user_id == current_user.id)
+        .first()
+    )
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found or access denied")
     threshold = set_metric_threshold(
         db,
-        dataset_id or "",
+        req.dataset_id,
         req.metric_name,
         req.z_score_threshold,
         req.iqr_multiplier,
@@ -309,10 +385,10 @@ def list_thresholds(
 
 # ── WebSocket endpoint for real-time anomaly alerts ───────────────────────────
 
-@router.websocket("/ws/anomalies")
-async def websocket_anomalies(websocket: WebSocket, token: str = Query(...)):
+@router.websocket("/api/v1/ws/anomalies")
+async def websocket_anomalies(websocket: WebSocket, token: str = Query(...), db: Session = Depends(get_db)):
     """WebSocket endpoint for real-time anomaly notifications.
-    
+
     Connect with ?token=<jwt> query parameter.
     Authenticates via JWT and keeps connection open for anomaly events.
     """
@@ -320,9 +396,25 @@ async def websocket_anomalies(websocket: WebSocket, token: str = Query(...)):
         payload = decode_token(token)
         user_id = payload.get("sub")
         token_type = payload.get("type")
+        token_jti = payload.get("jti")
         if token_type != "access" or not user_id:
             await websocket.close(code=4001, reason="Invalid token type")
             return
+
+        # SECURITY: Check if token is blacklisted (revoked)
+        if token_jti:
+            blacklisted = (
+                db.query(TokenBlacklist)
+                .filter(
+                    TokenBlacklist.token_jti == token_jti,
+                    TokenBlacklist.expires_at > datetime.now(timezone.utc),
+                )
+                .first()
+            )
+            if blacklisted:
+                await websocket.close(code=4001, reason="Token has been revoked")
+                return
+
     except Exception:
         await websocket.close(code=4001, reason="Invalid token")
         return
@@ -334,6 +426,6 @@ async def websocket_anomalies(websocket: WebSocket, token: str = Query(...)):
             data = await websocket.receive_text()
             # Client could send pong or other messages; ignore for now
     except WebSocketDisconnect:
-        ws_manager.disconnect(websocket, str(user_id))
+        await ws_manager.disconnect(websocket, str(user_id))
     except Exception:
-        ws_manager.disconnect(websocket, str(user_id))
+        await ws_manager.disconnect(websocket, str(user_id))

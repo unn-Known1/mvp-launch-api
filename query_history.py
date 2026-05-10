@@ -144,6 +144,8 @@ class QueryHistoryService:
 class InMemoryQueryHistory:
     """In-memory query history store for MVP development."""
 
+    MAX_ENTRIES_PER_USER = 1000  # Limit to prevent unbounded memory growth
+
     def __init__(self):
         self._store: dict[str, list[dict]] = {}
 
@@ -186,6 +188,9 @@ class InMemoryQueryHistory:
         if user_id not in self._store:
             self._store[user_id] = []
         self._store[user_id].insert(0, entry)
+        # Enforce size limit to prevent unbounded memory growth
+        if len(self._store[user_id]) > self.MAX_ENTRIES_PER_USER:
+            self._store[user_id] = self._store[user_id][:self.MAX_ENTRIES_PER_USER]
         return entry
 
     def get_user_history(

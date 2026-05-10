@@ -25,5 +25,10 @@ EXPOSE 8000
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
+# HEALTHCHECK: Docker container health monitoring
+# Uses the application's /health endpoint to verify the service is running
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
 # Run the application with gunicorn
 CMD ["gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]

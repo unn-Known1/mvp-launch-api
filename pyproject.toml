@@ -1,2 +1,64 @@
 [tool.isort]
 profile = "black"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --tb=short"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+markers = [
+    "integration: Integration tests requiring database",
+    "unit: Unit tests with mocks",
+    "e2e: End-to-end tests",
+]
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | _build
+  | build
+  | dist
+  | __pycache__
+  | \.pytest_cache
+  | frontend/node_modules
+)/
+'''
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+strict_optional = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+follow_imports = "silent"
+exclude = [
+    "\.venv/",
+    "build/",
+    "dist/",
+    "frontend/",
+]
+
+[tool.bandit]
+targets = ["."]
+exclude = [".venv", "venv", "tests", "frontend", "build", "dist"]
+skips = ["B101", "B311", "B413", "B416", "B601"]
+severity = "high"
+confidence = "high"

@@ -6,6 +6,7 @@ import { Button } from "../ui/Button"
 interface AnomalyTableProps {
   anomalies: Anomaly[]
   onStatusChange?: (anomalyId: string, status: "investigated" | "dismissed") => void
+  loading?: boolean
   className?: string
 }
 
@@ -21,7 +22,19 @@ const statusIcons: Record<string, typeof AlertTriangle> = {
   dismissed: XCircle,
 }
 
-export function AnomalyTable({ anomalies, onStatusChange, className }: AnomalyTableProps) {
+export function AnomalyTable({ anomalies, onStatusChange, loading = false, className }: AnomalyTableProps) {
+  if (loading) {
+    return (
+      <div className={cn("rounded-lg border bg-card p-8", className)}>
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-10 bg-muted/50 rounded animate-pulse" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   if (anomalies.length === 0) {
     return (
       <div className={cn("rounded-lg border bg-card p-8 text-center text-muted-foreground", className)}>

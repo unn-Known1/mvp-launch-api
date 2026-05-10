@@ -37,10 +37,21 @@ target_metadata = Base.metadata
 # ... etc.
 
 
-def get_url():
-    return os.getenv(
-        "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/app_db"
-    )
+def get_url() -> str:
+    """Get database URL from environment variable. Raises error if not set."""
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        environment = os.getenv("ENVIRONMENT", "development")
+        if environment == "production":
+            raise ValueError(
+                "DATABASE_URL environment variable is required in production. "
+                "Please set it before running migrations."
+            )
+        raise ValueError(
+            "DATABASE_URL environment variable is not set. "
+            "Please set it in your .env file or environment."
+        )
+    return db_url
 
 
 def run_migrations_offline() -> None:

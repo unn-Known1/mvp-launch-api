@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { getForecast, type ForecastResult } from "../services/api"
 import type { ChartData } from "../components/charts/chartUtils"
 
@@ -15,6 +15,12 @@ interface UseForecastResult {
   refetch: () => Promise<void>
 }
 
+function createError(message: string, cause?: Error): Error {
+  const err = new Error(message)
+  if (cause) err.cause = cause
+  return err
+}
+
 export function useForecast({
   forecastId,
   autoFetch = true,
@@ -23,13 +29,25 @@ export function useForecast({
   const [chartData, setChartData] = useState<ChartData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const forecastIdRef = useRef(forecastId)
+
+  // Keep refs fresh
+  useEffect(() => {
+    forecastIdRef.current = forecastId
+  }, [forecastId])
 
   const refetch = useCallback(async () => {
-    if (!forecastId) return
+    if (!forecastIdRef.current) return
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    abortControllerRef.current = new AbortController()
     setLoading(true)
     setError(null)
     try {
-      const data = await getForecast(forecastId as string)
+      const data = await getForecast(forecastIdRef.current as string, abortControllerRef.current.signal)
       setForecast(data)
 
       // Transform forecast data to ChartData format
@@ -42,21 +60,33 @@ export function useForecast({
         })
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch forecast")
+      if (err instanceof Error && err.name === 'AbortError') {
+        return
+      }
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch forecast"
+      setError(errorMessage)
+      throw createError(errorMessage, err instanceof Error ? err : undefined)
     } finally {
       setLoading(false)
     }
-  }, [forecastId])
+  }, []) // No deps - uses refs
 
   useEffect(() => {
-    if (!autoFetch || !forecastId) return
+    if (!autoFetch || !forecastIdRef.current) return
+
+    // Cancel any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
     let cancelled = false
 
     async function fetch() {
       setLoading(true)
       setError(null)
       try {
-        const data = await getForecast(forecastId as string)
+        const data = await getForecast(forecastIdRef.current as string, abortController.signal)
         if (!cancelled) {
           setForecast(data)
 
@@ -71,7 +101,14 @@ export function useForecast({
           }
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to fetch forecast")
+        if (err instanceof Error && err.name === 'AbortError') {
+          return
+        }
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch forecast"
+        if (!cancelled) {
+          setError(errorMessage)
+          console.error("[useForecast] Fetch error:", err)
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -80,8 +117,9 @@ export function useForecast({
     fetch()
     return () => {
       cancelled = true
+      abortController.abort()
     }
-  }, [autoFetch, forecastId])
+  }, [autoFetch]) // Only autoFetch as dep - uses refs
 
   return { forecast, chartData, loading, error, refetch }
 }

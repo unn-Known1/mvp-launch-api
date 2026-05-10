@@ -65,7 +65,9 @@ MVP Launch - A platform with React/TypeScript frontend, Python FastAPI backend, 
 
 ### 1.3 Communication Patterns
 - **Synchronous**: REST API (FastAPI) for client interactions
-- **Asynchronous**: SQS for background job processing, EventBridge for event streaming
+- **Asynchronous**: Redis/RQ for background job processing, EventBridge for event streaming
+
+> **Note**: The architecture originally planned to use AWS SQS for background job processing, but the implementation uses Redis with RQ (Redis Queue) for task scheduling. This provides similar functionality with lower infrastructure complexity for MVP.
 
 ## 2. API Contract Definitions (OpenAPI 3.0)
 

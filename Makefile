@@ -86,3 +86,29 @@ infra-plan-local: infra-up
 	TF_VAR_datadog_api_key="" \
 	TF_VAR_availability_zones='["us-east-1a","us-east-1b"]' \
 	cd infrastructure/terraform && terraform init -reconfigure && terraform plan
+
+# Database backup automation
+backup:
+	@echo "Creating RDS snapshot..."
+	aws rds create-db-snapshot \
+		--db-instance-identifier $(shell aws rds describe-db-instances --query 'DBInstances[0].DBInstanceIdentifier' --output text) \
+		--db-snapshot-identifier "$(shell date +%Y%m%d-%H%M%S)-manual-backup"
+	@echo "Backup snapshot created successfully."
+
+backup-list:
+	@echo "Available RDS snapshots:"
+	aws rds describe-db-snapshots \
+		--query 'DBSnapshots[*].{ID:DBSnapshotIdentifier,Status:Status,Created:SnapshotCreateTime}' \
+		--output table
+
+restore:
+	@echo "Available snapshots for restore:"
+	@aws rds describe-db-snapshots --query 'DBSnapshots[*].DBSnapshotIdentifier' --output text | tr '\t' '\n' | nl
+	@read -p "Enter snapshot number to restore: " num; \
+	snapshot_id=$$(aws rds describe-db-snapshots --query 'DBSnapshots[*].DBSnapshotIdentifier' --output text | tr '\t' '\n' | sed -n "$$num p"); \
+	echo "Restoring from $$snapshot_id..."; \
+	aws rds restore-db-instance-from-db-snapshot \
+		--db-instance-identifier new-restore-$$(date +%Y%m%d-%H%M%S) \
+		--db-snapshot-identifier $$snapshot_id
+
+.PHONY: backup backup-list restore

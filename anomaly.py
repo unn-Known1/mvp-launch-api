@@ -5,6 +5,7 @@ Supports model versioning, evaluation metrics, and configurable detection.
 
 import hashlib
 import json
+import logging
 import statistics
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from models import Anomaly, AnomalyThreshold, DataRecord, Dataset
 from ws_manager import manager as ws_manager
+
+logger = logging.getLogger(__name__)
 
 
 def _broadcast_anomalies_sync(anomalies: list[Anomaly], user_id: str) -> None:
@@ -46,10 +49,135 @@ def _broadcast_anomalies_sync(anomalies: list[Anomaly], user_id: str) -> None:
             asyncio.set_event_loop(loop)
             loop.run_until_complete(_broadcast())
             loop.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to broadcast anomalies: {e}")
 
     threading.Thread(target=_run_in_thread, daemon=True).start()
+
+
+# B-005: Email notification support
+def _send_email_notification(user_email: str, subject: str, html_body: str) -> bool:
+    """Send email notification for anomaly alerts.
+    
+    B-005 FIX: Added email notification channel beyond WebSocket.
+    Supports AWS SES if configured, otherwise logs warning.
+    """
+    import os
+    
+    try:
+        import boto3
+    except ImportError:
+        boto3 = None
+    
+    if not boto3:
+        logger.warning("boto3 not available for email notifications")
+        return False
+    
+    try:
+        aws_region = os.getenv("AWS_REGION", "us-east-1")
+        ses_client = boto3.client("ses", region_name=aws_region)
+        
+        body = {"Html": {"Data": html_body, "Charset": "UTF-8"}}
+        
+        sender_email = os.getenv("SES_SENDER_EMAIL", "alerts@forgeintelligence.com")
+        
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={"ToAddresses": [user_email]},
+            Message={"Subject": {"Data": subject}, "Body": body},
+        )
+        logger.info(f"Email notification sent: {response['MessageId']}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send email notification: {e}")
+        return False
+
+
+def _build_anomaly_email_html(anomalies: list[Anomaly], dataset_name: str = "Unknown Dataset") -> str:
+    """Build HTML email body for anomaly notifications."""
+    severity_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    
+    html = """<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { color: #2c3e50; }
+        .anomaly { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .severity-high { border-left: 4px solid #dc3545; }
+        .severity-medium { border-left: 4px solid #ffc107; }
+        .severity-low { border-left: 4px solid #28a745; }
+        .metric { font-weight: bold; color: #495057; }
+        .value { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <h2>🚨 Anomaly Detection Alert</h2>
+    <p>New anomalies detected in dataset: <strong>{dataset_name}</strong></p>
+""".format(dataset_name=dataset_name)
+    
+    for anomaly in anomalies:
+        emoji = severity_emoji.get(anomaly.severity, "⚪")
+        html += f"""
+    <div class="anomaly severity-{anomaly.severity}">
+        <p>{emoji} <strong>Severity:</strong> {anomaly.severity.upper()}</p>
+        <p><span class="metric">Metric:</span> {anomaly.metric_name}</p>
+        <p><span class="metric">Expected:</span> {anomaly.expected_value}</p>
+        <p><span class="metric">Actual:</span> <span class="value">{anomaly.actual_value}</span></p>
+        <p><span class="metric">Detection Method:</span> {anomaly.detection_method}</p>
+        <p><span class="metric">Timestamp:</span> {anomaly.timestamp.isoformat() if anomaly.timestamp else 'N/A'}</p>
+    </div>
+"""
+    
+    html += """
+    <p style="color: #6c757d; font-size: 12px; margin-top: 20px;">
+        This is an automated alert from MVP Launch API anomaly detection system.<br>
+        Visit your dashboard to investigate these anomalies.
+    </p>
+</body>
+</html>"""
+    
+    return html
+
+
+def _notify_user_of_anomalies(user_id: str, anomalies: list[Anomaly], dataset_id: str) -> None:
+    """Send email notification to user about detected anomalies.
+    
+    B-005 FIX: Added notification channel beyond WebSocket - email alerts.
+    """
+    from models import Dataset, User
+    from uuid import UUID
+    
+    if not anomalies or not user_id:
+        return
+    
+    try:
+        user_uuid = UUID(user_id)
+    except (ValueError, AttributeError):
+        logger.warning(f"Invalid user_id for email notification: {user_id}")
+        return
+    
+    # Get user email
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if not user or not user.email:
+            logger.warning(f"User {user_id} has no email for notification")
+            return
+        
+        # Get dataset name
+        dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        dataset_name = dataset.name if dataset else "Unknown Dataset"
+        
+        # Build and send email
+        subject = f"[{len(anomalies)}] Anomalies Detected - {dataset_name}"
+        html_body = _build_anomaly_email_html(anomalies, dataset_name)
+        
+        _send_email_notification(user.email, subject, html_body)
+    except Exception as e:
+        logger.error(f"Failed to send anomaly email notification: {e}")
+    finally:
+        db.close()
 
 
 def calculate_z_score(value: float, mean: float, std_dev: float) -> float:
@@ -225,6 +353,20 @@ def detect_anomalies_for_metric(
         ).hexdigest()[:8],
     )
 
+    # NEW-015 FIX: Batch pre-check for existing anomalies to avoid N+1 queries
+    # Instead of checking one-by-one inside the loop, fetch all existing timestamps at once
+    timestamps_to_check = [ts for ts, _ in series]
+    existing_anomalies = (
+        db.query(Anomaly.timestamp)
+        .filter(
+            Anomaly.dataset_id == dataset_id,
+            Anomaly.metric_name == metric_name,
+            Anomaly.timestamp.in_(timestamps_to_check),
+        )
+        .all()
+    )
+    existing_timestamps = {ts for (ts,) in existing_anomalies}
+
     anomalies = []
     for timestamp, value in series:
         is_anomaly = False
@@ -250,8 +392,6 @@ def detect_anomalies_for_metric(
         if value < iqr_lower or value > iqr_upper:
             is_anomaly = True
             detection_method.append("iqr")
-            iqr_range = iqr_upper - iqr_lower if iqr_upper != iqr_lower else 1.0
-            _ = abs(value - (iqr_lower + iqr_range / 2)) / iqr_range
             if severity == "low":
                 if value < iqr_lower * 0.5 or value > iqr_upper * 1.5:
                     severity = "high"
@@ -263,16 +403,8 @@ def detect_anomalies_for_metric(
                 confidence = max(confidence, min(0.95, confidence + 0.1))
 
         if is_anomaly:
-            existing = (
-                db.query(Anomaly)
-                .filter(
-                    Anomaly.dataset_id == dataset_id,
-                    Anomaly.metric_name == metric_name,
-                    Anomaly.timestamp == timestamp,
-                )
-                .first()
-            )
-            if not existing:
+            # NEW-015 FIX: Use pre-fetched set instead of DB query (prevents N+1)
+            if timestamp not in existing_timestamps:
                 anomaly = Anomaly(
                     dataset_id=dataset_id,
                     metric_name=metric_name,
@@ -295,6 +427,10 @@ def detect_anomalies_for_metric(
     # Broadcast newly detected anomalies to connected WebSocket clients
     if anomalies and user_id:
         _broadcast_anomalies_sync(anomalies, user_id)
+        # B-005: Also send email notifications for high severity anomalies
+        high_severity = [a for a in anomalies if a.severity == "high"]
+        if high_severity:
+            _notify_user_of_anomalies(user_id, high_severity, dataset_id)
     return anomalies
 
 
@@ -363,12 +499,17 @@ def update_anomaly_status(
 ) -> Optional[Anomaly]:
     from uuid import UUID
 
+    # NEW-006 FIX: Validate UUID format first (catches malformed UUIDs early)
     try:
         anomaly_uuid = UUID(anomaly_id)
     except (ValueError, AttributeError):
+        logger.warning(f"Invalid UUID format in update_anomaly_status: {anomaly_id}")
         return None
+    
+    # Validate existence in database (catches non-existent UUIDs)
     anomaly = db.query(Anomaly).filter(Anomaly.id == anomaly_uuid).first()
     if not anomaly:
+        logger.warning(f"Anomaly not found in database: {anomaly_id}")
         return None
     anomaly.status = status
     try:
