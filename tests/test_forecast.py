@@ -2,7 +2,7 @@
 Tests for Prophet forecasting module.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -33,14 +33,14 @@ def create_mock_record(dataset_id, data, created_at=None):
     rec = MagicMock(spec=DataRecord)
     rec.dataset_id = dataset_id
     rec.data = data
-    rec.created_at = created_at or datetime.utcnow()
+    rec.created_at = created_at or datetime.now(timezone.utc)
     return rec
 
 
 class TestGetTimeSeriesData:
     def test_extracts_numeric_data(self):
         ds_id = "test-ds-1"
-        base_time = datetime.utcnow()
+        base_time = datetime.now(timezone.utc)
         records = [
             create_mock_record(ds_id, {"sales": 100}, base_time),
             create_mock_record(ds_id, {"sales": 150}, base_time + timedelta(days=1)),

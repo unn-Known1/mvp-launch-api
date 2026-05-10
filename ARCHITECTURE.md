@@ -121,8 +121,8 @@ class User(Base):
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     role_id = Column(UUID, ForeignKey("roles.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
 class Role(Base):
     __tablename__ = "roles"

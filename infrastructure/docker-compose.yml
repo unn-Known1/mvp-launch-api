@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: mvp-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=acm,apigateway,cloudformation,cloudfront,cloudwatch,ec2,ecr,ecs,elasticache,elbv2,iam,kms,logs,rds,route53,s3,secretsmanager,sns,sqs,sts
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - EDGE_PORT=4566
+      - PERSISTENCE=1
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  localstack-data:

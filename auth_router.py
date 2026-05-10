@@ -23,7 +23,7 @@ from auth import (
 )
 from models import Role, User
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 
 class LoginRequest(BaseModel):

@@ -3,11 +3,12 @@ FastAPI router for CSV file upload and auto-detection pipeline.
 """
 
 import io
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -264,6 +265,65 @@ async def upload_csv(
             completed_at=import_batch.completed_at,
         ),
         detection=detection,
+    )
+
+
+@router.get("/datasets/{dataset_id}/export", status_code=200)
+def export_dataset_data(
+    dataset_id: str,
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Export dataset records as CSV or JSON download."""
+    dataset = (
+        db.query(Dataset)
+        .filter(Dataset.id == dataset_id, Dataset.user_id == current_user.id)
+        .first()
+    )
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    records = (
+        db.query(DataRecord)
+        .filter(DataRecord.dataset_id == dataset_id)
+        .all()
+    )
+
+    if format == "json":
+        data = [
+            {"id": str(r.id), "data": r.data, "created_at": r.created_at.isoformat() if r.created_at else None}
+            for r in records
+        ]
+        return Response(
+            content=json.dumps(data, default=str, indent=2),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename=dataset_{dataset_id}.json"
+            },
+        )
+
+    import io
+    import csv as csv_module
+
+    output = io.StringIO()
+    writer = csv_module.writer(output)
+    headers_written = False
+    for r in records:
+        if isinstance(r.data, dict):
+            if not headers_written:
+                writer.writerow(r.data.keys())
+                headers_written = True
+            writer.writerow(r.data.values())
+    csv_content = output.getvalue()
+    output.close()
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=dataset_{dataset_id}.csv"
+        },
     )
 
 
