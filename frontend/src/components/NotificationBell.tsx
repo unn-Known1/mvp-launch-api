@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Bell, BellOff, X, CheckCircle, AlertTriangle } from "lucide-react"
 import { Button } from "./ui/Button"
 import { cn } from "../lib/utils"
@@ -25,11 +25,29 @@ export function NotificationBell({ notifications, onMarkRead, onRefetch }: Notif
   const [open, setOpen] = useState(false)
   const unread = notifications.filter((n) => !n.read)
   const unreadCount = unread.length
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Handle Escape key to close dropdown
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [open])
 
   const handleMarkAllRead = useCallback(async () => {
-    for (const n of unread) {
-      if (!n.read) await onMarkRead(n.id)
-    }
+    const unreadNotifications = unread.filter((n) => !n.read)
+    if (unreadNotifications.length === 0) return
+
+    // Use Promise.all for parallel execution instead of sequential
+    await Promise.all(
+      unreadNotifications.map((n) => onMarkRead(n.id).catch((err) => {
+        console.warn(`Failed to mark notification ${n.id} as read:`, err)
+      }))
+    )
     onRefetch()
   }, [unread, onMarkRead, onRefetch])
 
@@ -56,7 +74,12 @@ export function NotificationBell({ notifications, onMarkRead, onRefetch }: Notif
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 w-96 bg-white border rounded-lg shadow-lg z-40 max-h-96 overflow-hidden flex flex-col">
+          <div
+            ref={dropdownRef}
+            className="absolute right-0 top-full mt-2 w-96 bg-white border rounded-lg shadow-lg z-40 max-h-96 overflow-hidden flex flex-col"
+            role="dialog"
+            aria-label="Notifications dropdown"
+          >
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <h4 className="font-semibold text-sm">Notifications</h4>
               <div className="flex gap-2">
@@ -90,7 +113,7 @@ export function NotificationBell({ notifications, onMarkRead, onRefetch }: Notif
                         {n.anomaly?.metric_name || "Anomaly detected"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {n.anomaly?.severity} severity
+                        {n.anomaly?.severity || ""} severity
                         {n.anomaly?.dataset_id && ` · ${n.anomaly.dataset_id.slice(0, 8)}...`}
                       </p>
                       <p className="text-xs text-muted-foreground">

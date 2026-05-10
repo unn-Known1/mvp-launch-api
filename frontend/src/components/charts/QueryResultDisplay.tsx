@@ -13,11 +13,21 @@ interface QueryResultDisplayProps {
 
 type ViewMode = "chart" | "table"
 
+const CHART_TYPES: ChartType[] = ["line", "bar", "pie", "scatter"]
+
+function isValidChartType(value: string): value is ChartType {
+  return CHART_TYPES.includes(value as ChartType)
+}
+
+function isNonEmptyArray<T>(arr: unknown): arr is T[] {
+  return Array.isArray(arr) && arr.length > 0
+}
+
 export function QueryResultDisplay({ result }: QueryResultDisplayProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("chart")
   const [chartType, setChartType] = useState<ChartType>("line")
 
-  if (!result.results || result.results.length === 0) {
+  if (!isNonEmptyArray(result.results)) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
@@ -27,16 +37,33 @@ export function QueryResultDisplay({ result }: QueryResultDisplayProps) {
     )
   }
 
-  const columns = Object.keys(result.results[0])
+  const firstRow = result.results[0]
+  if (!firstRow || typeof firstRow !== 'object') {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-muted-foreground">
+          Invalid results data
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const columns = Object.keys(firstRow)
   const chartData: ChartData = {
     columns,
-    rows: result.results,
+    rows: result.results as Record<string, unknown>[],
   }
 
   const columnDefs = columns.map((col) => ({
-    key: col as keyof typeof result.results[0],
+    key: col as keyof typeof firstRow,
     header: col,
   }))
+
+  const handleChartTypeChange = (value: string) => {
+    if (isValidChartType(value)) {
+      setChartType(value)
+    }
+  }
 
   return (
     <Card>
@@ -44,7 +71,7 @@ export function QueryResultDisplay({ result }: QueryResultDisplayProps) {
         <div className="flex items-center justify-between">
           <CardTitle>Query Results</CardTitle>
           <div className="flex gap-2">
-            <Select value={chartType} onValueChange={(v) => setChartType(v as ChartType)}>
+            <Select value={chartType} onValueChange={handleChartTypeChange}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>

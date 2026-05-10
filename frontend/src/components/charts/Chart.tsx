@@ -2,6 +2,24 @@ import { useRef, useEffect, useCallback } from "react"
 import type { EChartsOption } from "echarts"
 import { suggestChartType, type ChartData, type ChartType } from "./chartUtils"
 
+// Cache echarts import to avoid re-importing on every render
+let echartsModule: typeof import("echarts") | null = null
+let echartsInitPromise: Promise<typeof import("echarts")> | null = null
+
+function getEcharts(): Promise<typeof import("echarts")> {
+  if (echartsModule) {
+    return Promise.resolve(echartsModule)
+  }
+  if (echartsInitPromise) {
+    return echartsInitPromise
+  }
+  echartsInitPromise = import("echarts").then((module) => {
+    echartsModule = module
+    return module
+  })
+  return echartsInitPromise
+}
+
 interface ChartProps {
   data: ChartData
   type?: ChartType
@@ -11,6 +29,9 @@ interface ChartProps {
 
 export function Chart({ data, type, title, className }: ChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
+  const chartInstanceRef = useRef<any>(null)
+  const resizeHandlerRef = useRef<(() => void) | null>(null)
+  const mountedRef = useRef(true)
 
   const getOptions = useCallback((): EChartsOption => {
     const chartType = type || suggestChartType(data)
@@ -70,30 +91,35 @@ export function Chart({ data, type, title, className }: ChartProps) {
   }, [data, type, title])
 
   useEffect(() => {
+    mountedRef.current = true
+
     if (!chartRef.current) return
 
-    let chart: any = null
-    let handleResize: (() => void) | null = null
+    let chartInstance: any = null
 
     const initChart = async () => {
-      const echarts = await import("echarts")
-      if (!chartRef.current) return
-      
-      chart = echarts.init(chartRef.current)
-      chart.setOption(getOptions())
+      const echarts = await getEcharts()
+      if (!chartRef.current || !mountedRef.current) return
 
-      handleResize = () => chart.resize()
-      window.addEventListener("resize", handleResize)
+      chartInstance = echarts.init(chartRef.current)
+      chartInstanceRef.current = chartInstance
+      chartInstance.setOption(getOptions())
+
+      resizeHandlerRef.current = () => chartInstance.resize()
+      window.addEventListener("resize", resizeHandlerRef.current)
     }
 
     initChart()
 
     return () => {
-      if (handleResize) {
-        window.removeEventListener("resize", handleResize)
+      mountedRef.current = false
+      if (resizeHandlerRef.current) {
+        window.removeEventListener("resize", resizeHandlerRef.current)
+        resizeHandlerRef.current = null
       }
-      if (chart) {
-        chart.dispose()
+      if (chartInstance) {
+        chartInstance.dispose()
+        chartInstanceRef.current = null
       }
     }
   }, [getOptions])

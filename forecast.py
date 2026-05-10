@@ -16,7 +16,16 @@ from sqlalchemy.orm import Session
 
 from models import DataRecord, Dataset, Forecast
 
+# Constants for magic numbers - B-037
 MIN_DATA_POINTS = 30
+DEFAULT_YEARLY_SEASONALITY = True
+DEFAULT_WEEKLY_SEASONALITY = True
+DEFAULT_DAILY_SEASONALITY = False
+DEFAULT_CHANGEPOINT_PRIOR_SCALE = 0.05
+DEFAULT_SEASONALITY_PRIOR_SCALE = 10.0
+INTERVAL_WIDTH = 0.95
+DEFAULT_TEST_SIZE = 0.2
+MIN_DATA_POINTS_FOR_BACKTEST = 30
 
 
 def get_time_series_data(
@@ -93,11 +102,11 @@ def generate_forecast(
 
     try:
         params = hyperparams or {}
-        yearly_seasonality = params.get("yearly_seasonality", True)
-        weekly_seasonality = params.get("weekly_seasonality", True)
-        daily_seasonality = params.get("daily_seasonality", False)
-        changepoint_prior_scale = params.get("changepoint_prior_scale", 0.05)
-        seasonality_prior_scale = params.get("seasonality_prior_scale", 10.0)
+        yearly_seasonality = params.get("yearly_seasonality", DEFAULT_YEARLY_SEASONALITY)
+        weekly_seasonality = params.get("weekly_seasonality", DEFAULT_WEEKLY_SEASONALITY)
+        daily_seasonality = params.get("daily_seasonality", DEFAULT_DAILY_SEASONALITY)
+        changepoint_prior_scale = params.get("changepoint_prior_scale", DEFAULT_CHANGEPOINT_PRIOR_SCALE)
+        seasonality_prior_scale = params.get("seasonality_prior_scale", DEFAULT_SEASONALITY_PRIOR_SCALE)
 
         data_hash = hashlib.md5(
             json.dumps(df["y"].tolist(), default=str).encode()
@@ -116,7 +125,7 @@ def generate_forecast(
             yearly_seasonality=yearly_seasonality,
             weekly_seasonality=weekly_seasonality,
             daily_seasonality=daily_seasonality,
-            interval_width=0.95,
+            interval_width=INTERVAL_WIDTH,
             changepoint_prior_scale=changepoint_prior_scale,
             seasonality_prior_scale=seasonality_prior_scale,
         )
@@ -371,6 +380,7 @@ def list_forecasts(
     db: Session,
     dataset_id: Optional[str] = None,
     status: Optional[str] = None,
+    user_id: Optional[str] = None,
     limit: int = 100,
 ) -> list[Forecast]:
     """List forecasts with optional filters."""
@@ -379,6 +389,8 @@ def list_forecasts(
         query = query.filter(Forecast.dataset_id == dataset_id)
     if status:
         query = query.filter(Forecast.status == status)
+    if user_id:
+        query = query.join(Dataset).filter(Dataset.user_id == user_id)
     return query.order_by(Forecast.created_at.desc()).limit(limit).all()
 
 

@@ -9,6 +9,11 @@ import type { Dataset, UploadProgress } from "../services/api"
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
+// Sanitize filename to prevent XSS - remove potentially dangerous characters
+function sanitizeFilename(filename: string): string {
+  return filename.replace(/[<>\"'&]/g, '')
+}
+
 export default function DatasetUpload() {
   const navigate = useNavigate()
   const [file, setFile] = useState<File | null>(null)
@@ -159,7 +164,7 @@ export default function DatasetUpload() {
               <div className="flex items-center gap-3 p-4 border rounded-lg">
                 <FileSpreadsheet className="h-8 w-8 text-primary flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{file.name}</p>
+                  <p className="text-sm font-medium truncate">{sanitizeFilename(file.name)}</p>
                   <p className="text-xs text-muted-foreground">
                     {(file.size / 1024 / 1024).toFixed(1)} MB
                   </p>

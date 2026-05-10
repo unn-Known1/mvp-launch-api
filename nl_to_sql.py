@@ -78,14 +78,10 @@ class RephraseSuggestion:
     reason: str
 
 
-class NLToSQLTranslator:
+class SQLGenerator:
     """
-    Translates natural language to SQL using LLM with schema-aware prompting.
+    Responsible for generating SQL from natural language queries.
     """
-
-    def __init__(self, llm_client: Any = None):
-        self.llm_client = llm_client
-        self._query_history: list[NLQueryResult] = []
 
     def build_schema_prompt(self, schema_info: SchemaInfo) -> str:
         """Build the schema section of the prompt."""
@@ -119,165 +115,11 @@ User Question: "{natural_language_query}"
 Generate a SQL query that answers this question. Return ONLY the SQL query, nothing else.
 """
 
-    def build_confidence_prompt(
-        self,
-        natural_language_query: str,
-        generated_sql: str,
-        schema_info: SchemaInfo,
-    ) -> str:
-        """Build prompt to assess confidence in the translation."""
-        return f"""You are an expert SQL reviewer. Assess the quality and correctness of this SQL translation.
-
-Database Schema:
-{schema_info.to_prompt_text()}
-
-Original Question: "{natural_language_query}"
-Generated SQL:
-{generated_sql}
-
-Rate the translation on a scale of 0-100 and classify confidence as:
-- HIGH (80-100): The SQL clearly and correctly answers the question
-- MEDIUM (50-79): The SQL likely answers the question but may have minor issues
-- LOW (0-49): The SQL is unlikely to answer the question or has major issues
-
-Respond in JSON format:
-{{"score": <0-100>, "level": "<HIGH|MEDIUM|LOW>", "reasoning": "<brief explanation>"}}
-"""
-
-    def build_followup_prompt(
-        self,
-        natural_language_query: str,
-        generated_sql: str,
-        results_summary: str,
-    ) -> str:
-        """Build prompt to generate follow-up questions."""
-        return f"""Based on the user's query and results, suggest 3 relevant follow-up questions.
-
-Original Question: "{natural_language_query}"
-SQL Used: {generated_sql}
-Results Summary: {results_summary}
-
-Generate 3 natural language follow-up questions that:
-1. Drill deeper into the current results
-2. Explore a related metric or dimension
-3. Compare with a different time period or segment
-
-Respond in JSON format:
-{{"follow_up_questions": ["<question1>", "<question2>", "<question3>"]}}
-"""
-
-    def build_rephrase_prompt(
-        self,
-        natural_language_query: str,
-        error_message: str,
-    ) -> str:
-        """Build prompt to suggest rephrasing for failed queries."""
-        return f"""The following natural language query failed to produce valid SQL or execute correctly.
-
-Original Query: "{natural_language_query}"
-Error: {error_message}
-
-Suggest 3 alternative phrasings that might work better. Be specific and use terms that match database columns.
-
-Respond in JSON format:
-{{"suggestions": ["<alternative1>", "<alternative2>", "<alternative3>"], "reason": "<why the original failed>"}}
-"""
-
-    def parse_confidence_response(
-        self, response: str
-    ) -> tuple[int, ConfidenceLevel, str]:
-        """Parse LLM confidence response."""
-        try:
-            data = json.loads(response.strip())
-            score = int(data.get("score", 50))
-            level_str = data.get("level", "MEDIUM").upper()
-            reasoning = data.get("reasoning", "")
-            level = ConfidenceLevel(level_str.lower())
-            return score, level, reasoning
-        except (json.JSONDecodeError, ValueError, KeyError):
-            score = 30
-            if "valid" in response.lower() or "correct" in response.lower():
-                score = 70
-            return score, ConfidenceLevel.LOW, "Could not parse confidence response"
-
-    def parse_followup_response(self, response: str) -> list[str]:
-        """Parse LLM follow-up questions response."""
-        try:
-            data = json.loads(response.strip())
-            questions = data.get("follow_up_questions", [])
-            return [q for q in questions if isinstance(q, str)][:3]
-        except (json.JSONDecodeError, KeyError):
-            return []
-
-    def parse_rephrase_response(self, response: str) -> RephraseSuggestion:
-        """Parse LLM rephrase suggestions response."""
-        try:
-            data = json.loads(response.strip())
-            suggestions = [
-                s for s in data.get("suggestions", []) if isinstance(s, str)
-            ][:3]
-            reason = data.get("reason", "Query could not be processed")
-            return RephraseSuggestion(
-                original_query="",
-                suggestions=suggestions,
-                reason=reason,
-            )
-        except (json.JSONDecodeError, KeyError):
-            return RephraseSuggestion(
-                original_query="",
-                suggestions=[
-                    "Try rephrasing with specific column names",
-                    "Include the table name in your question",
-                    "Be more specific about what you want to measure",
-                ],
-                reason="Could not parse suggestions",
-            )
-
     def _mock_llm_call(self, prompt: str) -> str:
         """
         Mock LLM call for development/testing.
         Returns deterministic responses based on prompt content.
         """
-        if "confidence" in prompt.lower() or "assess" in prompt.lower():
-            if "SELECT" in prompt and "FROM" in prompt:
-                return json.dumps(
-                    {
-                        "score": 85,
-                        "level": "HIGH",
-                        "reasoning": "SQL correctly answers the question",
-                    }
-                )
-            return json.dumps(
-                {
-                    "score": 40,
-                    "level": "LOW",
-                    "reasoning": "Generated SQL may not match intent",
-                }
-            )
-
-        if "follow-up" in prompt.lower() or "followup" in prompt.lower():
-            return json.dumps(
-                {
-                    "follow_up_questions": [
-                        "What is the trend over the last 6 months?",
-                        "How does this compare to the previous period?",
-                        "Which category has the highest value?",
-                    ]
-                }
-            )
-
-        if "rephrase" in prompt.lower() or "suggestion" in prompt.lower():
-            return json.dumps(
-                {
-                    "suggestions": [
-                        "Show me the total sales by month for this year",
-                        "What are the sales figures grouped by month in 2024?",
-                        "Display monthly sales totals for the current year",
-                    ],
-                    "reason": "Original query was too vague or ambiguous",
-                }
-            )
-
         nl_query = ""
         if "User Question:" in prompt:
             match = re.search(r'User Question: "([^"]+)"', prompt)
@@ -393,11 +235,334 @@ Respond in JSON format:
             match = re.search(r"top\s+(\d+)", nl)
             if match:
                 return int(match.group(1))
-        # Match "List N records" or "Show N items"
-        match = re.search(r"\b(\d+)\b", nl)
+        # Match "List N records" or "Show N items" - limit to 1-5 digits to prevent DoS
+        match = re.search(r"(?<!\d)(\d{1,5})(?!\d)", nl)
         if match:
             return int(match.group(1))
         return 100
+
+    def generate_sql(
+        self,
+        natural_language_query: str,
+        schema_info: SchemaInfo,
+        dialect: str = "postgresql",
+    ) -> str:
+        """
+        Generate SQL from natural language query.
+        """
+        prompt = self.build_translation_prompt(
+            natural_language_query, schema_info, dialect
+        )
+        return self._mock_llm_call(prompt).strip()
+
+
+class ConfidenceScorer:
+    """
+    Responsible for assessing confidence in SQL translations.
+    """
+
+    def build_confidence_prompt(
+        self,
+        natural_language_query: str,
+        generated_sql: str,
+        schema_info: SchemaInfo,
+    ) -> str:
+        """Build prompt to assess confidence in the translation."""
+        return f"""You are an expert SQL reviewer. Assess the quality and correctness of this SQL translation.
+
+Database Schema:
+{schema_info.to_prompt_text()}
+
+Original Question: "{natural_language_query}"
+Generated SQL:
+{generated_sql}
+
+Rate the translation on a scale of 0-100 and classify confidence as:
+- HIGH (80-100): The SQL clearly and correctly answers the question
+- MEDIUM (50-79): The SQL likely answers the question but may have minor issues
+- LOW (0-49): The SQL is unlikely to answer the question or has major issues
+
+Respond in JSON format:
+{{"score": <0-100>, "level": "<HIGH|MEDIUM|LOW>", "reasoning": "<brief explanation>"}}
+"""
+
+    def parse_confidence_response(
+        self, response: str
+    ) -> tuple[int, ConfidenceLevel, str]:
+        """Parse LLM confidence response."""
+        try:
+            data = json.loads(response.strip())
+            score = int(data.get("score", 50))
+            level_str = data.get("level", "MEDIUM").upper()
+            reasoning = data.get("reasoning", "")
+            level = ConfidenceLevel(level_str.lower())
+            return score, level, reasoning
+        except (json.JSONDecodeError, ValueError, KeyError):
+            score = 30
+            if "valid" in response.lower() or "correct" in response.lower():
+                score = 70
+            return score, ConfidenceLevel.LOW, "Could not parse confidence response"
+
+    def _mock_llm_call(self, prompt: str) -> str:
+        """Mock LLM call for confidence assessment."""
+        if "SELECT" in prompt and "FROM" in prompt:
+            return json.dumps(
+                {
+                    "score": 85,
+                    "level": "HIGH",
+                    "reasoning": "SQL correctly answers the question",
+                }
+            )
+        return json.dumps(
+            {
+                "score": 40,
+                "level": "LOW",
+                "reasoning": "Generated SQL may not match intent",
+            }
+        )
+
+    def assess_confidence(
+        self,
+        natural_language_query: str,
+        generated_sql: str,
+        schema_info: SchemaInfo,
+    ) -> tuple[int, ConfidenceLevel, str]:
+        """
+        Assess confidence in the SQL translation.
+        Returns (score, level, reasoning).
+        """
+        prompt = self.build_confidence_prompt(
+            natural_language_query, generated_sql, schema_info
+        )
+        response = self._mock_llm_call(prompt)
+        return self.parse_confidence_response(response)
+
+
+class QueryHistoryManager:
+    """
+    Manages query history for the NL-to-SQL translator.
+    """
+
+    def __init__(self):
+        self._history: list[NLQueryResult] = []
+
+    def add_query(self, result: NLQueryResult) -> None:
+        """Add a query result to history."""
+        self._history.append(result)
+
+    def get_history(self) -> list[NLQueryResult]:
+        """Return query history."""
+        return list(self._history)
+
+    def clear_history(self) -> None:
+        """Clear query history."""
+        self._history.clear()
+
+    def get_recent_queries(self, limit: int = 10) -> list[NLQueryResult]:
+        """Get the most recent queries."""
+        return self._history[-limit:]
+
+
+class FollowUpManager:
+    """
+    Manages follow-up question generation.
+    """
+
+    def build_followup_prompt(
+        self,
+        natural_language_query: str,
+        generated_sql: str,
+        results_summary: str,
+    ) -> str:
+        """Build prompt to generate follow-up questions."""
+        return f"""Based on the user's query and results, suggest 3 relevant follow-up questions.
+
+Original Question: "{natural_language_query}"
+SQL Used: {generated_sql}
+Results Summary: {results_summary}
+
+Generate 3 natural language follow-up questions that:
+1. Drill deeper into the current results
+2. Explore a related metric or dimension
+3. Compare with a different time period or segment
+
+Respond in JSON format:
+{{"follow_up_questions": ["<question1>", "<question2>", "<question3>"]}}
+"""
+
+    def parse_followup_response(self, response: str) -> list[str]:
+        """Parse LLM follow-up questions response."""
+        try:
+            data = json.loads(response.strip())
+            questions = data.get("follow_up_questions", [])
+            return [q for q in questions if isinstance(q, str)][:3]
+        except (json.JSONDecodeError, KeyError):
+            return []
+
+    def _mock_llm_call(self, prompt: str) -> str:
+        """Mock LLM call for follow-up generation."""
+        return json.dumps(
+            {
+                "follow_up_questions": [
+                    "What is the trend over the last 6 months?",
+                    "How does this compare to the previous period?",
+                    "Which category has the highest value?",
+                ]
+            }
+        )
+
+    def generate_followup_questions(
+        self,
+        natural_language_query: str,
+        generated_sql: str,
+        results: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate follow-up questions based on query and results."""
+        results_summary = f"{len(results)} rows returned"
+        if results:
+            keys = list(results[0].keys())[:5]
+            results_summary += f", columns: {', '.join(keys)}"
+
+        prompt = self.build_followup_prompt(
+            natural_language_query, generated_sql, results_summary
+        )
+        response = self._mock_llm_call(prompt)
+        return self.parse_followup_response(response)
+
+
+class RephraseManager:
+    """
+    Manages query rephrasing suggestions.
+    """
+
+    def build_rephrase_prompt(
+        self,
+        natural_language_query: str,
+        error_message: str,
+    ) -> str:
+        """Build prompt to suggest rephrasing for failed queries."""
+        return f"""The following natural language query failed to produce valid SQL or execute correctly.
+
+Original Query: "{natural_language_query}"
+Error: {error_message}
+
+Suggest 3 alternative phrasings that might work better. Be specific and use terms that match database columns.
+
+Respond in JSON format:
+{{"suggestions": ["<alternative1>", "<alternative2>", "<alternative3>"], "reason": "<why the original failed>"}}
+"""
+
+    def parse_rephrase_response(self, response: str) -> RephraseSuggestion:
+        """Parse LLM rephrase suggestions response."""
+        try:
+            data = json.loads(response.strip())
+            suggestions = [
+                s for s in data.get("suggestions", []) if isinstance(s, str)
+            ][:3]
+            reason = data.get("reason", "Query could not be processed")
+            return RephraseSuggestion(
+                original_query="",
+                suggestions=suggestions,
+                reason=reason,
+            )
+        except (json.JSONDecodeError, KeyError):
+            return RephraseSuggestion(
+                original_query="",
+                suggestions=[
+                    "Try rephrasing with specific column names",
+                    "Include the table name in your question",
+                    "Be more specific about what you want to measure",
+                ],
+                reason="Could not parse suggestions",
+            )
+
+    def _mock_llm_call(self, prompt: str) -> str:
+        """Mock LLM call for rephrase suggestions."""
+        return json.dumps(
+            {
+                "suggestions": [
+                    "Show me the total sales by month for this year",
+                    "What are the sales figures grouped by month in 2024?",
+                    "Display monthly sales totals for the current year",
+                ],
+                "reason": "Original query was too vague or ambiguous",
+            }
+        )
+
+    def suggest_rephrase(
+        self,
+        natural_language_query: str,
+        error_message: str,
+    ) -> RephraseSuggestion:
+        """Suggest rephrasing for a failed query."""
+        prompt = self.build_rephrase_prompt(natural_language_query, error_message)
+        response = self._mock_llm_call(prompt)
+        suggestion = self.parse_rephrase_response(response)
+        suggestion.original_query = natural_language_query
+        return suggestion
+
+
+class QueryExecutor:
+    """
+    Responsible for executing SQL queries against connectors.
+    """
+
+    def execute_query(
+        self,
+        sql: str,
+        connector: Any,
+        max_rows: int = 10000,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """
+        Execute SQL query and return results.
+        Returns: (results, row_count, error_message)
+
+        NEW-011 FIX: Pass max_rows to connector for DB-level LIMIT to prevent
+        memory exhaustion on large result sets.
+        """
+        try:
+            # NEW-011 FIX: Add LIMIT clause for database-level row limiting
+            # This prevents fetching all rows then slicing (memory exhaustion)
+            sql_with_limit = sql.strip().rstrip(';')
+            # Remove any existing LIMIT clause to avoid conflicts
+            sql_upper = sql_with_limit.upper()
+            if ' LIMIT ' not in sql_upper:
+                sql_with_limit = f"{sql_with_limit} LIMIT {max_rows}"
+
+            # Try to pass max_rows to connector if it supports it
+            try:
+                results = connector.execute_query(sql_with_limit, max_rows=max_rows)
+            except TypeError:
+                # Connector doesn't support max_rows parameter, use SQL-level limit
+                results = connector.execute_query(sql_with_limit)
+
+            row_count = len(results)
+            if row_count > max_rows:
+                results = results[:max_rows]
+            return results, row_count, None
+        except Exception as e:
+            return [], None, str(e)
+
+
+class NLToSQLTranslator:
+    """
+    Translates natural language to SQL using LLM with schema-aware prompting.
+    Delegates to specialized components: SQLGenerator, ConfidenceScorer, etc.
+    """
+
+    def __init__(self, llm_client: Any = None):
+        self.llm_client = llm_client
+        self.sql_generator = SQLGenerator()
+        self.confidence_scorer = ConfidenceScorer()
+        self.history_manager = QueryHistoryManager()
+        self.followup_manager = FollowUpManager()
+        self.rephrase_manager = RephraseManager()
+        self.query_executor = QueryExecutor()
+
+    @property
+    def _query_history(self) -> list[NLQueryResult]:
+        """Property for backward compatibility."""
+        return self.history_manager.get_history()
 
     def translate(
         self,
@@ -419,18 +584,20 @@ Respond in JSON format:
         )
 
         try:
-            prompt = self.build_translation_prompt(
+            sql = self.sql_generator.generate_sql(
                 natural_language_query, schema_info, dialect
             )
-            sql = self._mock_llm_call(prompt)
-            result.generated_sql = sql.strip()
+            result.generated_sql = sql
 
-            confidence_prompt = self.build_confidence_prompt(
-                natural_language_query, result.generated_sql, schema_info
-            )
-            confidence_response = self._mock_llm_call(confidence_prompt)
-            score, level, reasoning = self.parse_confidence_response(
-                confidence_response
+            # SECURITY B-034: Reject DDL/DML statements to prevent harmful SQL execution
+            if self._contains_ddl_or_dml(sql):
+                result.error_message = "Generated SQL contains DDL or DML statements which are not allowed. Only SELECT queries are permitted."
+                result.confidence_score = 0
+                result.confidence_level = ConfidenceLevel.LOW
+                return result
+
+            score, level, reasoning = self.confidence_scorer.assess_confidence(
+                natural_language_query, sql, schema_info
             )
             result.confidence_score = score
             result.confidence_level = level
@@ -443,8 +610,29 @@ Respond in JSON format:
         elapsed_ms = int((time.time() - start_time) * 1000)
         result.execution_time_ms = elapsed_ms
 
-        self._query_history.append(result)
+        self.history_manager.add_query(result)
         return result
+
+    def _contains_ddl_or_dml(self, sql: str) -> bool:
+        """
+        Check if SQL contains DDL or DML statements.
+        Only SELECT queries are allowed for security reasons.
+        """
+        sql_upper = sql.upper().strip()
+        # Check for DDL keywords (Data Definition Language)
+        ddl_keywords = [
+            "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
+            "COMMENT", "GRANT", "REVOKE"
+        ]
+        # Check for DML keywords (Data Manipulation Language) - exclude SELECT
+        dml_keywords = [
+            "INSERT", "UPDATE", "DELETE", "MERGE", "REPLACE",
+            "CALL", "LOCK", "UNLOCK"
+        ]
+        for keyword in ddl_keywords + dml_keywords:
+            if sql_upper.startswith(keyword) or f" {keyword} " in sql_upper:
+                return True
+        return False
 
     def execute_query(
         self,
@@ -456,14 +644,7 @@ Respond in JSON format:
         Execute SQL query and return results.
         Returns: (results, row_count, error_message)
         """
-        try:
-            results = connector.execute_query(sql)
-            row_count = len(results)
-            if row_count > max_rows:
-                results = results[:max_rows]
-            return results, row_count, None
-        except Exception as e:
-            return [], None, str(e)
+        return self.query_executor.execute_query(sql, connector, max_rows)
 
     def generate_followup_questions(
         self,
@@ -472,16 +653,9 @@ Respond in JSON format:
         results: list[dict[str, Any]],
     ) -> list[str]:
         """Generate follow-up questions based on query and results."""
-        results_summary = f"{len(results)} rows returned"
-        if results:
-            keys = list(results[0].keys())[:5]
-            results_summary += f", columns: {', '.join(keys)}"
-
-        prompt = self.build_followup_prompt(
-            natural_language_query, generated_sql, results_summary
+        return self.followup_manager.generate_followup_questions(
+            natural_language_query, generated_sql, results
         )
-        response = self._mock_llm_call(prompt)
-        return self.parse_followup_response(response)
 
     def suggest_rephrase(
         self,
@@ -489,16 +663,76 @@ Respond in JSON format:
         error_message: str,
     ) -> RephraseSuggestion:
         """Suggest rephrasing for a failed query."""
-        prompt = self.build_rephrase_prompt(natural_language_query, error_message)
-        response = self._mock_llm_call(prompt)
-        suggestion = self.parse_rephrase_response(response)
-        suggestion.original_query = natural_language_query
-        return suggestion
+        return self.rephrase_manager.suggest_rephrase(natural_language_query, error_message)
 
     def get_query_history(self) -> list[NLQueryResult]:
         """Return query history."""
-        return list(self._query_history)
+        return self.history_manager.get_history()
 
     def clear_history(self):
         """Clear query history."""
-        self._query_history.clear()
+        self.history_manager.clear_history()
+
+    # Backward compatibility properties
+    def build_schema_prompt(self, schema_info: SchemaInfo) -> str:
+        return self.sql_generator.build_schema_prompt(schema_info)
+
+    def build_translation_prompt(
+        self,
+        natural_language_query: str,
+        schema_info: SchemaInfo,
+        dialect: str = "postgresql",
+    ) -> str:
+        return self.sql_generator.build_translation_prompt(
+            natural_language_query, schema_info, dialect
+        )
+
+    def build_confidence_prompt(
+        self,
+        natural_language_query: str,
+        generated_sql: str,
+        schema_info: SchemaInfo,
+    ) -> str:
+        return self.confidence_scorer.build_confidence_prompt(
+            natural_language_query, generated_sql, schema_info
+        )
+
+    def parse_confidence_response(
+        self, response: str
+    ) -> tuple[int, ConfidenceLevel, str]:
+        return self.confidence_scorer.parse_confidence_response(response)
+
+    def build_followup_prompt(
+        self,
+        natural_language_query: str,
+        generated_sql: str,
+        results_summary: str,
+    ) -> str:
+        return self.followup_manager.build_followup_prompt(
+            natural_language_query, generated_sql, results_summary
+        )
+
+    def parse_followup_response(self, response: str) -> list[str]:
+        return self.followup_manager.parse_followup_response(response)
+
+    def build_rephrase_prompt(
+        self,
+        natural_language_query: str,
+        error_message: str,
+    ) -> str:
+        return self.rephrase_manager.build_rephrase_prompt(
+            natural_language_query, error_message
+        )
+
+    def parse_rephrase_response(self, response: str) -> RephraseSuggestion:
+        return self.rephrase_manager.parse_rephrase_response(response)
+
+    def _mock_llm_call(self, prompt: str) -> str:
+        """Fallback mock LLM call for backward compatibility."""
+        if "confidence" in prompt.lower() or "assess" in prompt.lower():
+            return self.confidence_scorer._mock_llm_call(prompt)
+        if "follow-up" in prompt.lower() or "followup" in prompt.lower():
+            return self.followup_manager._mock_llm_call(prompt)
+        if "rephrase" in prompt.lower() or "suggestion" in prompt.lower():
+            return self.rephrase_manager._mock_llm_call(prompt)
+        return self.sql_generator._mock_llm_call(prompt)

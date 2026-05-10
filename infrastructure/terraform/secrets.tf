@@ -4,7 +4,9 @@ resource "aws_secretsmanager_secret" "db_password" {
   name        = "${var.project_name}-${var.environment}-db-password"
   description = "RDS database password for ${var.project_name} ${var.environment}"
 
-  recovery_window_in_days = 7
+  # SECURITY: 30-day recovery window for production secrets
+  # This provides enough time to detect and respond to accidental deletion
+  recovery_window_in_days = 30
 
   tags = {
     Name = "${var.project_name}-${var.environment}-db-password"
@@ -26,7 +28,8 @@ resource "aws_secretsmanager_secret" "app_secrets" {
   name        = "${var.project_name}-${var.environment}-app-secrets"
   description = "Application secrets for ${var.project_name} ${var.environment}"
 
-  recovery_window_in_days = 7
+  # SECURITY: 30-day recovery window for production secrets
+  recovery_window_in_days = 30
 
   tags = {
     Name = "${var.project_name}-${var.environment}-app-secrets"

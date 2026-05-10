@@ -9,8 +9,11 @@ services:
     environment:
       - SERVICES=acm,apigateway,cloudformation,cloudfront,cloudwatch,ec2,ecr,ecs,elasticache,elbv2,iam,kms,logs,rds,route53,s3,secretsmanager,sns,sqs,sts
       - AWS_DEFAULT_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      # SECURITY NOTE: Default LocalStack credentials are for local development only
+      # These are hardcoded intentionally for LocalStack which doesn't support IAM roles
+      # DO NOT use these credentials in production or real AWS environments
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
       - EDGE_PORT=4566
       - PERSISTENCE=1
     volumes:

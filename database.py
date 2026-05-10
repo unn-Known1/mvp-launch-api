@@ -8,9 +8,26 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/app_db"
-)
+
+def _get_database_url() -> str:
+    """Get database URL from environment variable. Raises error if not set in production."""
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        environment = os.getenv("ENVIRONMENT", "development")
+        if environment == "production":
+            raise ValueError(
+                "DATABASE_URL environment variable is required in production. "
+                "Please set it before starting the application."
+            )
+        # In development, provide clear error message instead of fallback
+        raise ValueError(
+            "DATABASE_URL environment variable is not set. "
+            "Please set it in your .env file or environment."
+        )
+    return db_url
+
+
+DATABASE_URL = _get_database_url()
 
 engine = create_engine(
     DATABASE_URL,

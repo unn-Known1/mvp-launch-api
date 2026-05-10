@@ -1,10 +1,12 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { QueryResultDisplay } from "../components/charts/QueryResultDisplay"
 import { Button } from "../components/ui/Button"
 import { Card, CardContent } from "../components/ui/Card"
 import { Input } from "../components/ui/Input"
-import { submitNLQuery } from "../services/api"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/Select"
+import { submitNLQuery, listCsvDatasets, type Dataset } from "../services/api"
 import type { NLQueryResult } from "../services/api"
+import { useAuth } from "../hooks/useAuth"
 
 const SAMPLE_QUERIES = [
   "Show me sales by month for 2024",
@@ -14,14 +16,33 @@ const SAMPLE_QUERIES = [
 ]
 
 export default function QueryPage() {
+  const { user } = useAuth()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<NLQueryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>("")
+
+  // Fetch available data sources on mount
+  useEffect(() => {
+    async function fetchDatasets() {
+      try {
+        const data = await listCsvDatasets()
+        setDatasets(data)
+        if (data.length > 0) {
+          setSelectedDataSourceId(data[0].id)
+        }
+      } catch {
+        // Use empty string if fetch fails
+      }
+    }
+    fetchDatasets()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!query.trim()) return
+    if (!query.trim() || !selectedDataSourceId) return
 
     setLoading(true)
     setError(null)
@@ -29,8 +50,8 @@ export default function QueryPage() {
     try {
       const res = await submitNLQuery({
         query,
-        data_source_id: "default",
-        user_id: "demo-user",
+        data_source_id: selectedDataSourceId,
+        user_id: user?.id || "",
         execute: true,
       })
       setResult(res)
@@ -60,7 +81,20 @@ export default function QueryPage() {
                 placeholder="e.g., Show me sales by month for 2024"
                 className="flex-1"
               />
-              <Button type="submit" disabled={loading}>
+              <Select value={selectedDataSourceId} onValueChange={setSelectedDataSourceId}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Select data source" />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasets.length === 0 && <SelectItem value="none">No datasets available</SelectItem>}
+                  {datasets.map((ds) => (
+                    <SelectItem key={ds.id} value={ds.id}>
+                      {ds.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button type="submit" disabled={loading || !selectedDataSourceId}>
                 {loading ? "Running..." : "Query"}
               </Button>
             </div>

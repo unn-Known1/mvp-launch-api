@@ -1,8 +1,19 @@
 """
 CRUD service for data source configurations.
 Manages persisted database connection configurations.
+
+IMPORTANT NOTE - B-022:
+This module uses an in-memory data store (DataSourceStore class).
+In production, this would be backed by the application database with proper persistence.
+For the MVP, we use an in-memory dict which means:
+- Credentials are lost on container restart
+- Connector config is not shared across multiple application instances
+- Horizontal scaling is NOT supported with this implementation
+
+For production deployment, replace InMemoryQueryHistory with a database-backed store.
 """
 
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
@@ -16,10 +27,13 @@ class DataSourceStore:
 
     In production, this would be backed by the application database.
     For the MVP, we use an in-memory dict with the same interface.
+
+    NEW-010 FIX: Added threading.Lock for thread-safe operations.
     """
 
     def __init__(self):
         self._store: dict[str, dict] = {}
+        self._lock = threading.Lock()
 
     def create(self, config: DataSourceConfig, user_id: str = "") -> DataSourceConfig:
         """Create a new data source configuration."""
@@ -29,29 +43,31 @@ class DataSourceStore:
         config.created_at = now
         config.updated_at = now
 
-        self._store[config_id] = {
-            "id": config_id,
-            "name": config.name,
-            "db_type": config.db_type,
-            "host": config.host,
-            "port": config.port,
-            "database": config.database,
-            "username": config.username,
-            "password_encrypted": config.password_encrypted,
-            "connection_pool_size": config.connection_pool_size,
-            "connection_max_overflow": config.connection_max_overflow,
-            "connection_timeout": config.connection_timeout,
-            "ssl_enabled": config.ssl_enabled,
-            "extra_params": config.extra_params,
-            "user_id": user_id,
-            "created_at": now,
-            "updated_at": now,
-        }
+        with self._lock:
+            self._store[config_id] = {
+                "id": config_id,
+                "name": config.name,
+                "db_type": config.db_type,
+                "host": config.host,
+                "port": config.port,
+                "database": config.database,
+                "username": config.username,
+                "password_encrypted": config.password_encrypted,
+                "connection_pool_size": config.connection_pool_size,
+                "connection_max_overflow": config.connection_max_overflow,
+                "connection_timeout": config.connection_timeout,
+                "ssl_enabled": config.ssl_enabled,
+                "extra_params": config.extra_params,
+                "user_id": user_id,
+                "created_at": now,
+                "updated_at": now,
+            }
         return config
 
     def list_all(self, user_id: str = "") -> list[DataSourceConfig]:
         """List all data source configurations (without decrypted passwords), scoped to user."""
-        records = self._store.values()
+        with self._lock:
+            records = list(self._store.values())
         if user_id:
             records = [r for r in records if r.get("user_id") == user_id]
         return [
@@ -60,7 +76,8 @@ class DataSourceStore:
 
     def get(self, config_id: str, user_id: str = "") -> Optional[DataSourceConfig]:
         """Get a data source configuration by ID, optionally scoped to user."""
-        record = self._store.get(config_id)
+        with self._lock:
+            record = self._store.get(config_id)
         if not record:
             return None
         if user_id and record.get("user_id") != user_id:
@@ -71,43 +88,45 @@ class DataSourceStore:
         self, config_id: str, updates: dict, user_id: str = ""
     ) -> Optional[DataSourceConfig]:
         """Update a data source configuration."""
-        record = self._store.get(config_id)
-        if not record:
-            return None
-        if user_id and record.get("user_id") != user_id:
-            return None
+        with self._lock:
+            record = self._store.get(config_id)
+            if not record:
+                return None
+            if user_id and record.get("user_id") != user_id:
+                return None
 
-        updatable_fields = {
-            "name",
-            "host",
-            "port",
-            "database",
-            "username",
-            "connection_pool_size",
-            "connection_max_overflow",
-            "connection_timeout",
-            "ssl_enabled",
-            "extra_params",
-        }
+            updatable_fields = {
+                "name",
+                "host",
+                "port",
+                "database",
+                "username",
+                "connection_pool_size",
+                "connection_max_overflow",
+                "connection_timeout",
+                "ssl_enabled",
+                "extra_params",
+            }
 
-        for field, value in updates.items():
-            if field == "password":
-                record["password_encrypted"] = encrypt_value(value)
-            elif field in updatable_fields:
-                record[field] = value
+            for field, value in updates.items():
+                if field == "password":
+                    record["password_encrypted"] = encrypt_value(value)
+                elif field in updatable_fields:
+                    record[field] = value
 
-        record["updated_at"] = datetime.now(timezone.utc).isoformat()
-        return self._record_to_config(record)
+            record["updated_at"] = datetime.now(timezone.utc).isoformat()
+            return self._record_to_config(record)
 
     def delete(self, config_id: str, user_id: str = "") -> bool:
         """Delete a data source configuration."""
-        record = self._store.get(config_id)
-        if not record:
-            return False
-        if user_id and record.get("user_id") != user_id:
-            return False
-        del self._store[config_id]
-        return True
+        with self._lock:
+            record = self._store.get(config_id)
+            if not record:
+                return False
+            if user_id and record.get("user_id") != user_id:
+                return False
+            del self._store[config_id]
+            return True
 
     def _record_to_config(
         self, record: dict, include_password: bool = True

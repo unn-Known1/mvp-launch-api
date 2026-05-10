@@ -27,32 +27,82 @@ function generateChartData(): ChartData {
   }
 }
 
-// TODO: Replace with real forecast ID from user's forecasts list
-const DEMO_FORECAST_ID = "demo-forecast-1"
+// Placeholder forecast - in production, fetch from forecasts API
+const FORECAST_PLACEHOLDER: ChartData = {
+  columns: ["date", "forecast", "lower", "upper"],
+  rows: [],
+}
+
+interface ForecastListItem {
+  id: string
+  name: string
+  status: string
+  created_at: string
+}
+
+async function listUserForecasts(userId: string): Promise<ForecastListItem[]> {
+  const response = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1"}/ml/forecasts?user_id=${userId}`, {
+    headers: {
+      "Authorization": `Bearer ${localStorage.getItem("access_token") || ""}`,
+    },
+  })
+  if (!response.ok) return []
+  const data = await response.json()
+  return data.forecasts || data || []
+}
 
 export default function Dashboard() {
   const { user, hasRole } = useAuth()
   const userId = user?.id || ""
+  // RBAC: admins/managers see all data, others see only their own
   const canViewAllData = hasRole(["admin", "manager"])
   const canViewReports = hasRole(["admin", "manager", "analyst"])
 
   // Fetch data from APIs
-  // RBAC: analysts may only see their own queries/anomalies, managers/admins see all
+  // For query history: admins/managers can see all (pass empty userId to get all), others see only their own
+  // Note: API would need to support a "view all" mode - for now we pass userId for user-specific data
   const { total: datasetCount, loading: datasetsLoading, error: datasetsError } = useDatasets({ autoFetch: true })
   const { queries, loading: queriesLoading, error: queriesError } = useQueryHistory({
-    userId: canViewAllData ? "" : userId,
+    // Only fetch queries if userId is available, regardless of role
+    // API should filter based on auth token, not userId parameter
+    userId: userId,
     limit: 50,
     autoFetch: true,
   })
   const { anomalies, loading: anomaliesLoading, error: anomaliesError, updateStatus } = useAnomalies({
-    // Pass no filters for admin/manager to see all, or filter by user-specific datasets
     autoFetch: true,
   })
   const { reports, loading: reportsLoading, error: reportsError } = useScheduledReports({
+    // Reports: only fetch for users with report access
     userId: canViewReports ? userId : "",
+    autoFetch: canViewReports && !!userId,  // Only auto-fetch if user has access
+  })
+  // Forecast section - show only if userId is available (is logged in)
+  // In production, you would fetch the user's forecasts and use the first active one
+  const [forecastId, setForecastId] = useState<string | null>(null)
+
+  // Fetch the user's forecasts to find an active one
+  useEffect(() => {
+    async function fetchForecasts() {
+      if (!userId) return
+      try {
+        const forecasts = await listUserForecasts(userId)
+        // Find first active forecast
+        const activeForecast = forecasts.find((f: ForecastListItem) => f.status === "completed" || f.status === "active")
+        if (activeForecast) {
+          setForecastId(activeForecast.id)
+        }
+      } catch (err) {
+        console.warn("Failed to fetch forecasts:", err)
+      }
+    }
+    fetchForecasts()
+  }, [userId])
+
+  const { chartData: forecastChartData, loading: forecastLoading, error: forecastError } = useForecast({
+    forecastId, // Use actual forecast ID
     autoFetch: true,
   })
-  const { chartData: forecastChartData, loading: forecastLoading, error: forecastError } = useForecast({ forecastId: DEMO_FORECAST_ID, autoFetch: true })
   const { unreadCount } = useNotifications(true)
 
   // Performance: all critical data loaded state tracked for 3s load time verification
@@ -169,24 +219,22 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Forecast chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Forecast</CardTitle>
-          <CardDescription>Time-series forecast data</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {forecastLoading ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">Loading forecast...</p>
-          ) : forecastChartData ? (
-            <Chart data={forecastChartData} type="line" title="Forecast" />
-          ) : forecastError ? (
-            <EmptyState title="Forecast unavailable" description="Unable to load forecast data" />
-          ) : (
-            <EmptyState title="No forecast" description="Create a forecast to see predictions here" />
-          )}
-        </CardContent>
-      </Card>
+      {/* Forecast chart - only shown when forecast data is available */}
+      {forecastChartData && forecastChartData.rows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Forecast</CardTitle>
+            <CardDescription>Time-series forecast data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {forecastLoading ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Loading forecast...</p>
+            ) : (
+              <Chart data={forecastChartData} type="line" title="Forecast" />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Activity Feed and Recent Anomalies */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -213,7 +261,7 @@ export default function Dashboard() {
             {anomaliesLoading ? (
               <p className="text-sm text-muted-foreground py-8 text-center">Loading anomalies...</p>
             ) : anomalies.length > 0 ? (
-              <AnomalyTable anomalies={recentAnomalies} onStatusChange={updateStatus} />
+              <AnomalyTable anomalies={recentAnomalies} onStatusChange={updateStatus} loading={anomaliesLoading} />
             ) : (
               <EmptyState title="No anomalies" description="No anomalies have been detected" />
             )}

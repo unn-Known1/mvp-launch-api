@@ -15,7 +15,7 @@ resource "aws_db_instance" "postgres" {
   engine_version    = "15.4"
   instance_class    = var.db_instance_class
   allocated_storage = 20
-  storage_type      = "gp2"
+  storage_type      = "gp3"  # gp3 is newer, cheaper, and better performance than gp2
   storage_encrypted = true
 
   db_name  = var.db_name

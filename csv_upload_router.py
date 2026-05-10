@@ -211,15 +211,27 @@ async def upload_csv(
     db.flush()
 
     try:
-        records = []
-        for _, row in df.iterrows():
-            record = DataRecord(
-                dataset_id=dataset.id,
-                import_batch_id=import_batch.id,
-                data=row.to_dict(),
-            )
-            records.append(record)
-        db.bulk_save_objects(records)
+        BATCH_SIZE = 1000
+        for batch_start in range(0, len(df), BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, len(df))
+            batch_records = []
+            for _, row in df.iloc[batch_start:batch_end].iterrows():
+                record = DataRecord(
+                    dataset_id=dataset.id,
+                    import_batch_id=import_batch.id,
+                    data=row.to_dict(),
+                )
+                batch_records.append(record)
+            db.bulk_insert_mappings(DataRecord, [
+                {
+                    "dataset_id": r.dataset_id,
+                    "import_batch_id": r.import_batch_id,
+                    "data": r.data,
+                }
+                for r in batch_records
+            ])
+            db.commit()
+            db.flush()
 
         import_batch.status = "completed"
         import_batch.processed_rows = len(df)
@@ -284,10 +296,12 @@ def export_dataset_data(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    records = (
+    # NEW-003 FIX: Use streaming/chunked processing to prevent memory exhaustion
+    # Use yield_per() for server-side cursor iteration instead of loading all records
+    records_query = (
         db.query(DataRecord)
         .filter(DataRecord.dataset_id == dataset_id)
-        .all()
+        .yield_per(1000)  # Process in chunks of 1000
     )
 
     if format == "json":

@@ -31,6 +31,23 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+function isValidPayload(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getStringField(obj: Record<string, unknown>, field: string, fallback: string): string {
+  const value = obj[field]
+  if (typeof value === 'string' && value.length > 0) return value
+  if (typeof value === 'number') return String(value)
+  return fallback
+}
+
+function getOptionalStringField(obj: Record<string, unknown>, field: string): string | undefined {
+  const value = obj[field]
+  if (typeof value === 'string' && value.length > 0) return value
+  return undefined
+}
+
 export function useAuth(): AuthState & { logout: () => void; getToken: () => Promise<string | null> } {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -46,11 +63,11 @@ export function useAuth(): AuthState & { logout: () => void; getToken: () => Pro
       }
 
       const payload = decodeJwtPayload(token)
-      if (payload) {
+      if (isValidPayload(payload)) {
         setUser({
-          id: (payload.sub || payload.user_id || payload.id || "unknown") as string,
-          email: (payload.email || "unknown@example.com") as string,
-          role: payload.role as string | undefined,
+          id: getStringField(payload, 'sub', getStringField(payload, 'user_id', getStringField(payload, 'id', 'unknown'))),
+          email: getStringField(payload, 'email', 'unknown@example.com'),
+          role: getOptionalStringField(payload, 'role'),
         })
       } else {
         setUser(null)
@@ -82,7 +99,10 @@ export function useAuth(): AuthState & { logout: () => void; getToken: () => Pro
   const logout = useCallback(async () => {
     try {
       await apiLogout()
-    } catch {
+    } catch (err) {
+      // Logout API failed, but we still clear local state
+      const errorMessage = err instanceof Error ? err.message : "Logout API failed"
+      console.warn(errorMessage)
     }
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")

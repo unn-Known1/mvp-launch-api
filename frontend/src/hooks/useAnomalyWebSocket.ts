@@ -36,23 +36,29 @@ export function useAnomalyWebSocket({
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptsRef = useRef(0)
   const onAnomalyRef = useRef(onAnomaly)
+  const mountedRef = useRef(true)
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Keep ref fresh
+  // Keep ref fresh and track mount state
   useEffect(() => {
     onAnomalyRef.current = onAnomaly
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
   }, [onAnomaly])
 
   const MAX_RECONNECT_DELAY = 30000
   const BASE_RECONNECT_DELAY = 1000
 
   const connect = useCallback(async () => {
-    if (!enabled || wsRef.current) return
+    // Connection guard - don't connect if disabled or unmounted
+    if (!enabled || !mountedRef.current || wsRef.current) return
 
     try {
       const token = await getToken()
-      if (!token) {
+      if (!token || !mountedRef.current) {
         setError("No authentication token available")
         return
       }
@@ -61,18 +67,21 @@ export function useAnomalyWebSocket({
       const host = import.meta.env.VITE_API_URL
         ? new URL(import.meta.env.VITE_API_URL).host
         : window.location.host
-      const wsUrl = `${protocol}//${host}/api/v1/anomalies/ws/anomalies?token=${token}`
+      const wsUrl = `${protocol}//${host}/api/v1/anomalies/ws/anomalies`
 
-      const ws = new WebSocket(wsUrl)
+      const ws = new WebSocket(wsUrl, [token])
       wsRef.current = ws
 
       ws.onopen = () => {
-        setConnected(true)
-        setError(null)
-        reconnectAttemptsRef.current = 0
+        if (mountedRef.current) {
+          setConnected(true)
+          setError(null)
+          reconnectAttemptsRef.current = 0
+        }
       }
 
       ws.onmessage = (event) => {
+        if (!mountedRef.current) return
         try {
           const data = JSON.parse(event.data)
           if (data.type === "anomaly_detected" && data.anomaly) {
@@ -84,6 +93,7 @@ export function useAnomalyWebSocket({
       }
 
       ws.onclose = (event) => {
+        if (!mountedRef.current) return
         wsRef.current = null
         setConnected(false)
 
@@ -95,24 +105,32 @@ export function useAnomalyWebSocket({
           return
         }
 
-        // Exponential backoff reconnect
-        const delay = Math.min(
-          BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current),
-          MAX_RECONNECT_DELAY
-        )
-        reconnectAttemptsRef.current += 1
+        // Exponential backoff reconnect - only if still mounted and enabled
+        if (mountedRef.current && enabled) {
+          const delay = Math.min(
+            BASE_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current),
+            MAX_RECONNECT_DELAY
+          )
+          reconnectAttemptsRef.current += 1
 
-        reconnectTimeoutRef.current = setTimeout(() => {
-          reconnectTimeoutRef.current = null
-          connect()
-        }, delay)
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectTimeoutRef.current = null
+            if (mountedRef.current && enabled) {
+              connect()
+            }
+          }, delay)
+        }
       }
 
       ws.onerror = () => {
-        setError("WebSocket connection error")
+        if (mountedRef.current) {
+          setError("WebSocket connection error")
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to connect")
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to connect")
+      }
     }
   }, [enabled])
 

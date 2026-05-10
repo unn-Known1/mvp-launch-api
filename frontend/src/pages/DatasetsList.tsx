@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Upload, Search, Trash2, Eye, AlertCircle, FileSpreadsheet } from "lucide-react"
 import { Button } from "../components/ui/Button"
@@ -6,10 +6,14 @@ import { Input } from "../components/ui/Input"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "../components/ui/Card"
 import { ErrorBanner } from "../components/ui/ErrorBanner"
 import { EmptyState } from "../components/ui/EmptyState"
+import { Pagination } from "../components/ui/Pagination"
 import { useDatasets } from "../hooks/useDatasets"
 import { deleteDataset } from "../services/api"
 import type { Dataset } from "../services/api"
 import { cn } from "../lib/utils"
+
+const ITEMS_PER_PAGE = 20
+const SEARCH_DEBOUNCE_MS = 300
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"
@@ -63,17 +67,35 @@ function DeleteDialog({ dataset, onConfirm, onCancel }: DeleteDialogProps) {
   )
 }
 
+const SKELETON_COUNT = 3
+
 export default function DatasetsList() {
   const navigate = useNavigate()
-  const { datasets, total, loading, error, refetch } = useDatasets({ autoFetch: true })
+  const [page, setPage] = useState(1)
+  const { datasets, total, loading, error, refetch } = useDatasets({ page, limit: ITEMS_PER_PAGE, autoFetch: true })
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const filteredDatasets = datasets.filter((d) =>
-    d.name.toLowerCase().includes(search.toLowerCase()) ||
-    (d.description && d.description.toLowerCase().includes(search.toLowerCase()))
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1) // Reset to first page on search
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const filteredDatasets = useMemo(() =>
+    datasets.filter((d) =>
+      d.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      (d.description && d.description.toLowerCase().includes(debouncedSearch.toLowerCase()))
+    ),
+    [datasets, debouncedSearch]
   )
+
+  const totalPages = Math.ceil(total / ITEMS_PER_PAGE)
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) return
@@ -86,6 +108,10 @@ export default function DatasetsList() {
       setDeleteError(err instanceof Error ? err.message : "Failed to delete dataset")
     }
   }, [deleteTarget, refetch])
+
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage)
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -128,7 +154,7 @@ export default function DatasetsList() {
         <CardContent>
           {loading ? (
             <div className="space-y-3">
-              {[...Array(3)].map((_, i) => (
+              {[...Array(SKELETON_COUNT)].map((_, i) => (
                 <div key={i} className="h-12 bg-muted/50 rounded animate-pulse" />
               ))}
             </div>
@@ -149,71 +175,83 @@ export default function DatasetsList() {
               }
             />
           ) : (
-            <div className="rounded-md border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">Name</th>
-                    <th className="px-4 py-3 text-left font-medium">Rows</th>
-                    <th className="px-4 py-3 text-left font-medium">Size</th>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-left font-medium">Created</th>
-                    <th className="px-4 py-3 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredDatasets.map((dataset) => (
-                    <tr key={dataset.id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => navigate(`/datasets/${dataset.id}`)}
-                          className="font-medium text-left hover:underline text-primary"
-                        >
-                          {dataset.name}
-                        </button>
-                        {dataset.description && (
-                          <p className="text-xs text-muted-foreground truncate max-w-xs">
-                            {dataset.description}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {dataset.row_count.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatBytes(dataset.size_bytes)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={cn("inline-flex items-center px-2 py-1 rounded-full text-xs font-medium", getStatusBadgeClass(dataset.status))}>
-                          {dataset.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatDate(dataset.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => navigate(`/datasets/${dataset.id}`)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteTarget(dataset)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
+            <>
+              <div className="rounded-md border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="px-4 py-3 text-left font-medium">Name</th>
+                      <th className="px-4 py-3 text-left font-medium">Rows</th>
+                      <th className="px-4 py-3 text-left font-medium">Size</th>
+                      <th className="px-4 py-3 text-left font-medium">Status</th>
+                      <th className="px-4 py-3 text-left font-medium">Created</th>
+                      <th className="px-4 py-3 text-right font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {filteredDatasets.map((dataset) => (
+                      <tr key={dataset.id} className="border-b hover:bg-muted/30">
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => navigate(`/datasets/${dataset.id}`)}
+                            className="font-medium text-left hover:underline text-primary"
+                          >
+                            {dataset.name}
+                          </button>
+                          {dataset.description && (
+                            <p className="text-xs text-muted-foreground truncate max-w-xs">
+                              {dataset.description}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {dataset.row_count.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatBytes(dataset.size_bytes)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn("inline-flex items-center px-2 py-1 rounded-full text-xs font-medium", getStatusBadgeClass(dataset.status))}>
+                            {dataset.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {formatDate(dataset.created_at)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => navigate(`/datasets/${dataset.id}`)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteTarget(dataset)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination
+                    currentPage={page}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                  />
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

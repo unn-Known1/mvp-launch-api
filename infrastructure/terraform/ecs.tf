@@ -35,11 +35,19 @@ resource "aws_ecs_task_definition" "backend" {
         }
       ]
 
+      # SECURITY: Use Secrets Manager for sensitive environment variables
+      # The secrets are injected at runtime, not stored in task definition
       environment = [
         { name = "ENVIRONMENT", value = var.environment },
-        { name = "DATABASE_URL", value = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.endpoint}/${var.db_name}" },
         { name = "REDIS_URL", value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0" },
         { name = "S3_BUCKET_NAME", value = aws_s3_bucket.data.bucket }
+      ]
+
+      secrets = [
+        {
+          name      = "DATABASE_URL"
+          valueFrom = "${aws_secretsmanager_secret.db_password.arn}:DATABASE_URL::"
+        }
       ]
 
       logConfiguration = {
@@ -87,7 +95,53 @@ resource "aws_ecs_service" "backend" {
 
   depends_on = [aws_lb_listener.backend]
 
+  # Enable autoscaling
+  enable_execute_command = true
+
   tags = {
     Name = "${var.project_name}-${var.environment}-service"
+  }
+}
+
+# ECS Autoscaling
+resource "aws_appautoscaling_target" "ecs" {
+  max_capacity       = 10
+  min_capacity       = 2
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.backend.name}"
+  scalable_dim_action = "ecs:service:DesiredCount"
+  role_arn          = aws_iam_role.ecs_autoscaling.arn
+}
+
+resource "aws_appautoscaling_policy" "ecs_cpu" {
+  name               = "${var.project_name}-${var.environment}-cpu-autoscaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs.resource_id
+  scalable_dim_action = aws_appautoscaling_target.ecs.scalable_dim_action
+  role_arn          = aws_iam_role.ecs_autoscaling.arn
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = 70
+    scale_in_cooldown  = 60
+    scale_out_cooldown = 60
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
+}
+
+resource "aws_appautoscaling_policy" "ecs_memory" {
+  name               = "${var.project_name}-${var.environment}-memory-autoscaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs.resource_id
+  scalable_dim_action = aws_appautoscaling_target.ecs.scalable_dim_action
+  role_arn          = aws_iam_role.ecs_autoscaling.arn
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = 80
+    scale_in_cooldown  = 60
+    scale_out_cooldown = 60
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageMemoryUtilization"
+    }
   }
 }
