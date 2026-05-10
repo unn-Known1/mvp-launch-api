@@ -2,47 +2,6 @@
 
 A FastAPI-based backend for the Forge Intelligence BI platform, providing data ingestion, natural-language querying, forecasting, anomaly detection, and automated reporting. Built with Python, PostgreSQL (pgvector), Redis, and AWS.
 
-## Security & Bug Fixes
-
-All critical, high, and medium severity bugs have been fixed. See [bug_report.md](bug_report.md) for details.
-
-### Security Improvements
-- **SQL Injection Prevention** — Multi-statement SQL validation, parameterized queries
-- **XSS Protection** — Input sanitization, DOMPurify integration, text content rendering
-- **Authentication Security** — API key support, WebSocket token via subprotocol, token blacklisting
-- **Authorization** — User ownership verification on all endpoints, RBAC fixes
-- **Secrets Management** — AWS Secrets Manager integration, env var validation at startup
-
-### Architecture Improvements
-- **Async Task Queue** — Long-running operations return 202 with task_id for polling
-- **Redis Caching** — Server-side caching for expensive operations
-- **Circuit Breaker** — pybreaker pattern for external service protection
-- **Retry Policies** — Exponential backoff with tenacity for transient failures
-- **Webhook System** — Event notifications with delivery tracking
-- **Email Notifications** — AWS SES integration for anomaly alerts
-
-### Infrastructure Improvements
-- **Auto-Scaling** — ECS Fargate autoscaling policies
-- **WAF Protection** — AWS WAF v2 with OWASP rule sets
-- **VPC Endpoints** — Private networking for S3, Secrets Manager, STS
-- **At-Rest Encryption** — Redis ElastiCache encryption enabled
-- **SNS Notifications** — CloudWatch alarm notifications
-
-### Code Quality Improvements
-- **Refactored nl_to_sql.py** — Extracted SQLGenerator, ConfidenceScorer, QueryExecutor
-- **Refactored report_router.py** — Extracted QueryExecutor, ReportGenerator, ReportDeliverer
-- **Soft Delete** — deleted_at timestamps on key models for data recovery
-- **Audit Log API** — Full query interface for audit log events
-- **Pagination** — Consistent pagination pattern on all list endpoints
-
-### Testing Coverage
-- **test_auth_router.py** — Full auth flow test coverage
-- **test_role_router.py** — Role management test coverage
-- **test_connectors_router.py** — DataSource CRUD test coverage
-- **test_ml_workers.py** — Integration tests with test database
-
----
-
 ## Project Status
 
 | Feature | Status | Details |
